@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: cmms-kalip-bakim
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    disk:
+      name: cmms-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_DIR
+        value: /data
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PORT
+        value: 3000
