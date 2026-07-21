@@ -198,6 +198,65 @@ app.get("/api/audit", auth, adminOnly, (req, res) => {
 // ── SİSTEM ──
 app.get("/api/health", (req, res) => res.json({ status:"ok", version:"15.0.0" }));
 
+// GET /api/tv — Giriş gerektirmeyen TV modu verisi
+app.get("/api/tv", (req, res) => {
+  const state = DB.state || {};
+  const molds = state.molds || [];
+  const wos = state.wos || [];
+  const openWos = wos.filter(w => w.status !== "KAPATILDI");
+  const critWos = openWos.filter(w => w.priority === "KRİTİK");
+  const now = new Date().toISOString().slice(0,10);
+  const todayWos = wos.filter(w => w.created_at && w.created_at.slice(0,10) === now);
+  const closedToday = todayWos.filter(w => w.status === "KAPATILDI");
+  const transferMolds = molds.filter(m => m.status === "Transfer");
+  const closedAriz = wos.filter(w => w.status==="KAPATILDI" && w.started_at && w.closed_at);
+  const avgMin = closedAriz.length > 0 ? Math.round(closedAriz.reduce((s,w) => s + (new Date(w.closed_at)-new Date(w.started_at))/60000, 0) / closedAriz.length) : 0;
+  const activeMolds = molds.filter(m => m.status === "Kullanılabilir" || m.status === "Bakımda");
+  // Havuzdaki işler (atanmamış veya beklemede)
+  const poolWos = openWos.filter(w => !w.assigned || w.status === "BEKLEMEDE");
+  res.json({
+    open: openWos.length,
+    critical: critWos.length,
+    mttr: avgMin,
+    activeMolds: activeMolds.length,
+    transfer: transferMolds.length,
+    closedToday: closedToday.length,
+    totalMolds: molds.length,
+    totalWos: wos.length,
+    openWos: openWos.slice(0, 30).map(w => ({
+      id: w.id, mold_id: w.mold_id, type: w.type, priority: w.priority,
+      status: w.status, description: (w.description||"").slice(0,60),
+      assigned: w.assigned||null, created_at: w.created_at, cavity_no: w.cavity_no
+    })),
+    poolWos: poolWos.slice(0, 20).map(w => ({
+      id: w.id, mold_id: w.mold_id, type: w.type, priority: w.priority,
+      description: (w.description||"").slice(0,60), created_at: w.created_at
+    })),
+    transferMolds: transferMolds.map(m => ({
+      id: m.id, transfer_to: m.transfer_to, transfer_date: m.transfer_date,
+      transfer_return_date: m.transfer_return_date
+    })),
+    ts: new Date().toISOString()
+  });
+});
+
+// POST /api/tv/claim — İş emri üstlenme (login gerekli)
+app.post("/api/tv/claim", auth, (req, res) => {
+  const { wo_id } = req.body;
+  if (!wo_id) return res.status(400).json({ error: "wo_id gerekli" });
+  if (!DB.state || !DB.state.wos) return res.status(404).json({ error: "İş emri bulunamadı" });
+  const wo = DB.state.wos.find(w => w.id === wo_id);
+  if (!wo) return res.status(404).json({ error: "İş emri bulunamadı" });
+  if (wo.assigned && wo.status !== "BEKLEMEDE") return res.status(400).json({ error: "Bu iş zaten atanmış" });
+  wo.assigned = req.user.id;
+  wo.status = "DEVAM_EDİYOR";
+  wo.started_at = new Date().toISOString().replace("T"," ").slice(0,19);
+  addAudit(req.user.id, req.user.name, req.user.role, "İş Üstlenildi (TV)", "wo", wo_id,
+    req.user.name + " " + wo_id + " iş emrini TV modundan üstlendi");
+  saveDB();
+  res.json({ ok: true, wo_id, assigned: req.user.name });
+});
+
 app.get("/api/system/info", auth, adminOnly, (req, res) => {
   let dbSizeKb = 0;
   try { dbSizeKb = Math.round(fs.statSync(DATA_FILE).size/1024); } catch {}

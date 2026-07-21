@@ -140,6 +140,7 @@ tr:hover td{background:#fafbff}
   .btn{min-height:40px}
   .nav-btn{padding:12px 14px;font-size:13px}
 }
+@keyframes slideIn{from{transform:translateX(100px);opacity:0}to{transform:translateX(0);opacity:1}}
 </style>
 </head>
 <body>
@@ -1196,6 +1197,10 @@ function Sidebar(_ref2) {
       id: "history",
       ico: "📋",
       l: "Geçmiş"
+    }, {
+      id: "tvmode",
+      ico: "📺",
+      l: "TV Modu"
     }],
     tech: [{
       id: "my",
@@ -4178,6 +4183,7 @@ function LeaderPanel(_ref24) {
       addAuditLog: addAuditLog
     }));
   }
+    if (page === "tvmode") { return React.createElement(TVModePage, { data: data }); }
   if (page === "matrix") {
     return /*#__PURE__*/React.createElement("div", {
       className: "anim",
@@ -5259,6 +5265,7 @@ function OperatorPanel(_ref26) {
       onClick: submit
     }, "\uD83D\uDCE4 Kal\u0131p At\xF6lyesine G\xF6nder"))));
   }
+    if (page === "tvmode") { return React.createElement(TVModePage, { data: data }); }
   if (page === "history") {
     return /*#__PURE__*/React.createElement("div", {
       className: "anim"
@@ -5636,6 +5643,7 @@ function TechPanel(_ref27) {
       }
     }, btns));
   };
+    if (page === "tvmode") { return React.createElement(TVModePage, { data: data }); }
   if (page === "my") {
     // Atanmamış bekleyen işler - teknisyen kendine alabilir
     var unassignedPool = wos.filter(function (w) {
@@ -15066,27 +15074,54 @@ function exportMoldHistory(moldList, allWos, fileName) {
 ═════════════════════════════════════════════════ */
 function TVModePage(_ref) {
   var data = _ref.data;
-  var molds = data.molds || [];
-  var wos = data.wos || [];
-  var _tv1 = useState(false), _tv2 = _slicedToArray(_tv1,2), fullscreen = _tv2[0], setFullscreen = _tv2[1];
-  var _tv3 = useState(new Date()), _tv4 = _slicedToArray(_tv3,2), now = _tv4[0], setNow = _tv4[1];
+  var localMolds = data ? data.molds || [] : [];
+  var localWos = data ? data.wos || [] : [];
 
-  useEffect(function() {
-    var t = setInterval(function(){ setNow(new Date()); }, 30000);
-    return function(){ clearInterval(t); };
+  var _tv1=useState(null),_tv2=_slicedToArray(_tv1,2),tvData=_tv2[0],setTvData=_tv2[1];
+  var _tv3=useState(false),_tv4=_slicedToArray(_tv3,2),fullscreen=_tv4[0],setFullscreen=_tv4[1];
+  var _tv5=useState(new Date()),_tv6=_slicedToArray(_tv5,2),now=_tv6[0],setNow=_tv6[1];
+  var _tv7=useState(null),_tv8=_slicedToArray(_tv7,2),claimModal=_tv8[0],setClaimModal=_tv8[1];
+  var _tv9=useState(""),_tv10=_slicedToArray(_tv9,2),claimUser=_tv10[0],setClaimUser=_tv10[1];
+  var _tv11=useState(""),_tv12=_slicedToArray(_tv11,2),claimPass=_tv12[0],setClaimPass=_tv12[1];
+  var _tv13=useState(""),_tv14=_slicedToArray(_tv13,2),claimErr=_tv14[0],setClaimErr=_tv14[1];
+  var _tv15=useState(false),_tv16=_slicedToArray(_tv15,2),claimLoading=_tv16[0],setClaimLoading=_tv16[1];
+  var _tv17=useState(null),_tv18=_slicedToArray(_tv17,2),notification=_tv18[0],setNotification=_tv18[1];
+  var _tv19=useState(0),_tv20=_slicedToArray(_tv19,2),prevWoCount=_tv20[0],setPrevWoCount=_tv20[1];
+  var _tv21=useRef(null);
+
+  // API'den veri çek — 15 saniyede bir
+  useEffect(function(){
+    var fetchTV = function(){
+      fetch("/api/tv").then(function(r){return r.json();}).then(function(d){
+        if(d && typeof d.open !== "undefined") {
+          // Yeni iş emri bildirimi
+          if(prevWoCount > 0 && d.totalWos > prevWoCount) {
+            var diff = d.totalWos - prevWoCount;
+            setNotification({text: "🚨 " + diff + " yeni iş emri oluşturuldu!", ts: Date.now()});
+            // Tarayıcı bildirimi
+            if("Notification" in window && Notification.permission === "granted") {
+              new Notification("CMMS — Yeni İş Emri", {body: diff + " yeni iş emri oluşturuldu!", icon: "/icon.svg"});
+            }
+            // Ses çal
+            try { var a = new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleVQlAMKc5dqeTkUbr6XU2pddQiKYr8/XnV5JKZOzytWcYE0slbbG0ZpiTy6Xt8LNmWJRMJa4v8qXYlMylri+x5ZiVDOWuL3GlWJUNJa4vcWUYlU0lri8xZNhVTWXuLzEkmFVNZe4u8ORYVU2l7i7w5BhVTeYuLrCj2BVN5i5ucKOYFU4mLm5wY5gVTiYubm/jWBVOZm5ub+NYFU5mbm4vo1gVTqZubm+jGBVOpm5uL2LYFU7mrm4vYtgVTuauLi9imBVPJq4uLyKYFU8m7i4u4lgVT2buLi7iWBVPZu4t7qIYFU+m7i3uohgVT6cuLe6h2BVP5y4t7mHYFU/nLi3uYZgVUCcuLe5hmBVQJy4trmFYFVBnbi2uIVgVUGduLa4hGBVQp24triEYFVCnbe2uINgVUOdt7W3g2BVQ524tbeDYFVDnbe1t4JgVUSdt7W2gmBVRJ24tbaCYFVFnra1toFgVQ=="); a.volume=0.3; a.play(); } catch(e){}
+          }
+          setPrevWoCount(d.totalWos);
+          setTvData(d);
+        }
+      }).catch(function(){});
+    };
+    fetchTV();
+    var t = setInterval(fetchTV, 15000);
+    setNow(new Date());
+    var t2 = setInterval(function(){ setNow(new Date()); }, 30000);
+    // Bildirim izni iste
+    if("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+    return function(){ clearInterval(t); clearInterval(t2); };
   }, []);
 
-  var openWos = wos.filter(function(w){ return w.status !== "KAPATILDI"; });
-  var critWos = openWos.filter(function(w){ return w.priority === "KRİTİK"; });
-  var todayWos = wos.filter(function(w){ return w.created_at && w.created_at.slice(0,10) === now.toISOString().slice(0,10); });
-  var closedToday = todayWos.filter(function(w){ return w.status === "KAPATILDI"; });
-  var transferMolds = molds.filter(function(m){ return m.status === "Transfer"; });
-  var hurdaMolds = molds.filter(function(m){ return m.status === "Hurda"; });
-  var activeMolds = molds.filter(function(m){ return m.status === "Kullanılabilir" || m.status === "Bakımda"; });
-
-  // MTTR hesapla
-  var closedAriz = wos.filter(function(w){ return w.status==="KAPATILDI" && w.started_at && w.closed_at; });
-  var avgMin = closedAriz.length > 0 ? Math.round(closedAriz.reduce(function(s,w){ return s + (new Date(w.closed_at)-new Date(w.started_at))/60000; },0) / closedAriz.length) : 0;
+  var d = tvData || {open:0,critical:0,mttr:0,activeMolds:localMolds.length,transfer:0,closedToday:0,totalMolds:localMolds.length,totalWos:localWos.length,openWos:[],poolWos:[],transferMolds:[]};
 
   var toggleFS = function() {
     if (!document.fullscreenElement) {
@@ -15097,95 +15132,149 @@ function TVModePage(_ref) {
     }
   };
 
-  var S = function(props) {
+  // İş üstlenme
+  var doClaim = async function() {
+    if(!claimUser.trim()||!claimPass.trim()){setClaimErr("Kullanıcı adı ve şifre girin");return;}
+    setClaimLoading(true); setClaimErr("");
+    try {
+      var lr = await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:claimUser.trim(),password:claimPass})});
+      var lj = await lr.json();
+      if(!lr.ok){setClaimLoading(false);setClaimErr(lj.error||"Giriş başarısız");return;}
+      var cr = await fetch("/api/tv/claim",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+lj.token},body:JSON.stringify({wo_id:claimModal.id})});
+      var cj = await cr.json();
+      setClaimLoading(false);
+      if(!cr.ok){setClaimErr(cj.error||"Üstlenilemedi");return;}
+      setNotification({text:"✅ "+claimModal.id+" işi "+lj.user.name+" tarafından üstlenildi!",ts:Date.now()});
+      setClaimModal(null);setClaimUser("");setClaimPass("");
+    } catch(e){setClaimLoading(false);setClaimErr("Sunucuya bağlanılamadı");}
+  };
+
+  var S = function(p) {
     return React.createElement("div", {
-      style: { background: props.bg||"#fff", borderRadius: 16, padding: "24px 20px",
-               border: "1px solid "+(props.border||"#e8edf2"), textAlign: "center",
-               display: "flex", flexDirection: "column", justifyContent: "center", minHeight: 120 }
+      style:{background:p.bg||"#fff",borderRadius:16,padding:"20px 16px",border:"1px solid "+(p.border||"#e8edf2"),textAlign:"center",display:"flex",flexDirection:"column",justifyContent:"center",minHeight:100}
     },
-      React.createElement("div", { style: { fontSize: 42, marginBottom: 4 } }, props.ico),
-      React.createElement("div", { style: { fontSize: 48, fontWeight: 900, color: props.color||"#0f2044", lineHeight: 1 } }, props.val),
-      React.createElement("div", { style: { fontSize: 14, color: "#6b7fa3", marginTop: 8, fontWeight: 600 } }, props.label)
+      React.createElement("div",{style:{fontSize:36,marginBottom:2}},p.ico),
+      React.createElement("div",{style:{fontSize:42,fontWeight:900,color:p.color||"#0f2044",lineHeight:1}},p.val),
+      React.createElement("div",{style:{fontSize:12,color:"#6b7fa3",marginTop:6,fontWeight:600}},p.label)
     );
   };
 
-  return React.createElement("div", {
-    style: { background: "#0a1628", minHeight: "100vh", padding: 24, color: "#fff" }
-  },
+  return React.createElement("div",{style:{background:"#0a1628",minHeight:"100vh",padding:20,color:"#fff"}},
+    // Bildirim pop-up
+    notification && (Date.now() - notification.ts < 8000) && React.createElement("div",{
+      style:{position:"fixed",top:20,right:20,background:notification.text.includes("🚨")?"#c62828":"#1a6b3c",color:"#fff",padding:"16px 24px",borderRadius:12,fontSize:14,fontWeight:700,zIndex:9999,boxShadow:"0 8px 32px rgba(0,0,0,.5)",animation:"slideIn .3s ease",maxWidth:400},
+      onClick:function(){setNotification(null);}
+    }, notification.text),
+
     // Üst bar
-    React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 } },
-      React.createElement("div", null,
-        React.createElement("h1", { style: { fontSize: 28, fontWeight: 900, margin: 0 } }, "🏭 CMMS v15 — Canlı Dashboard"),
-        React.createElement("div", { style: { fontSize: 13, color: "#7fa8d4", marginTop: 4 } },
-          now.toLocaleDateString("tr-TR", { weekday: "long", year: "numeric", month: "long", day: "numeric" }) + " — " +
-          now.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }) + " · Her 30 sn güncellenir"
+    React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}},
+      React.createElement("div",null,
+        React.createElement("h1",{style:{fontSize:24,fontWeight:900,margin:0}},"🏭 CMMS v15 — Canlı Dashboard"),
+        React.createElement("div",{style:{fontSize:11,color:"#7fa8d4",marginTop:4}},
+          now.toLocaleDateString("tr-TR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})+" — "+
+          now.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})+" · Otomatik güncellenir"
         )
       ),
-      React.createElement("button", {
-        onClick: toggleFS,
-        style: { background: "#1565c0", color: "#fff", border: "none", borderRadius: 8, padding: "10px 20px", fontSize: 14, fontWeight: 700, cursor: "pointer" }
-      }, fullscreen ? "◱ Küçült" : "⛶ Tam Ekran")
+      React.createElement("div",{style:{display:"flex",gap:8}},
+        React.createElement("button",{onClick:toggleFS,style:{background:"#1565c0",color:"#fff",border:"none",borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:700,cursor:"pointer"}},fullscreen?"◱ Küçült":"⛶ Tam Ekran")
+      )
     ),
 
     // KPI Grid
-    React.createElement("div", {
-      style: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 24 }
-    },
-      React.createElement(S, { ico: "📋", val: openWos.length, label: "Açık İş Emri", color: openWos.length > 10 ? "#e65100" : "#1565c0", bg: "#fff" }),
-      React.createElement(S, { ico: "🔴", val: critWos.length, label: "Kritik İş Emri", color: critWos.length > 0 ? "#c62828" : "#1a6b3c", bg: critWos.length > 0 ? "#fff5f5" : "#fff" }),
-      React.createElement(S, { ico: "⏱", val: avgMin > 0 ? avgMin + " dk" : "—", label: "Ort. Tamir Süresi (MTTR)", color: avgMin > 120 ? "#c62828" : "#1a6b3c" }),
-      React.createElement(S, { ico: "🏭", val: activeMolds.length, label: "Aktif Kalıp", color: "#0f2044" }),
-      React.createElement(S, { ico: "🚚", val: transferMolds.length, label: "Tedarikçide", color: "#7b1fa2" }),
-      React.createElement(S, { ico: "✅", val: closedToday.length, label: "Bugün Kapatılan", color: "#1a6b3c" })
+    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12,marginBottom:20}},
+      React.createElement(S,{ico:"📋",val:d.open,label:"Açık İş Emri",color:d.open>10?"#e65100":"#1565c0"}),
+      React.createElement(S,{ico:"🔴",val:d.critical,label:"Kritik",color:d.critical>0?"#c62828":"#1a6b3c",bg:d.critical>0?"#1a0000":"transparent"}),
+      React.createElement(S,{ico:"⏱",val:d.mttr>0?d.mttr+" dk":"—",label:"MTTR",color:d.mttr>120?"#c62828":"#1a6b3c"}),
+      React.createElement(S,{ico:"🏭",val:d.activeMolds,label:"Aktif Kalıp",color:"#64b5f6"}),
+      React.createElement(S,{ico:"🚚",val:d.transfer,label:"Tedarikçide",color:"#ce93d8"}),
+      React.createElement(S,{ico:"✅",val:d.closedToday,label:"Bugün Kapatılan",color:"#1a6b3c"})
     ),
 
-    // Açık iş emirleri tablosu
-    openWos.length > 0 && React.createElement("div", {
-      style: { background: "#111e33", borderRadius: 12, padding: 16, maxHeight: 400, overflowY: "auto" }
-    },
-      React.createElement("h3", { style: { fontSize: 16, fontWeight: 800, marginBottom: 12, color: "#fff" } },
-        "📋 Açık İş Emirleri (" + openWos.length + ")"
+    // İki sütun: Açık İşler + İş Havuzu
+    React.createElement("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}},
+
+      // SOL: Açık İş Emirleri
+      React.createElement("div",{style:{background:"#111e33",borderRadius:12,padding:14,maxHeight:400,overflowY:"auto"}},
+        React.createElement("h3",{style:{fontSize:14,fontWeight:800,marginBottom:10,color:"#fff"}},"📋 Açık İş Emirleri ("+d.open+")"),
+        (d.openWos||[]).length===0 && React.createElement("div",{style:{color:"#4a6a8a",fontSize:13,padding:20,textAlign:"center"}},"Açık iş emri yok — harika! 🎉"),
+        (d.openWos||[]).map(function(w,i){
+          var pColor = w.priority==="KRİTİK"?"#ff5252":w.priority==="YÜKSEK"?"#ff9800":"#64b5f6";
+          return React.createElement("div",{key:w.id,style:{background:i%2===0?"rgba(255,255,255,.03)":"transparent",padding:"8px 10px",borderBottom:"1px solid #1a3a6b",display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}},
+            React.createElement("div",{style:{flex:1,minWidth:0}},
+              React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center"}},
+                React.createElement("span",{style:{fontWeight:700,color:"#fff",fontSize:12}},w.id),
+                React.createElement("span",{style:{color:pColor,fontWeight:700,fontSize:10,background:"rgba(255,255,255,.1)",padding:"2px 6px",borderRadius:4}},w.priority)
+              ),
+              React.createElement("div",{style:{color:"#78909c",fontSize:10,marginTop:2}},w.mold_id+" · "+w.type+" · "+(w.description||""))
+            ),
+            React.createElement("div",{style:{fontSize:9,color:"#4a6a8a",textAlign:"right",flexShrink:0}},
+              w.assigned ? React.createElement("span",{style:{color:"#64b5f6"}},"👤 Atandı") : React.createElement("span",{style:{color:"#ff9800"}},"⏳ Havuzda"),
+              React.createElement("div",null,(w.created_at||"").slice(0,16))
+            )
+          );
+        })
       ),
-      React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 13 } },
-        React.createElement("thead", null,
-          React.createElement("tr", { style: { borderBottom: "2px solid #1a3a6b" } },
-            ["No", "Kalıp", "Tip", "Öncelik", "Durum", "Oluşturma"].map(function(h) {
-              return React.createElement("th", { key: h, style: { padding: "8px 10px", textAlign: "left", color: "#7fa8d4", fontWeight: 700 } }, h);
-            })
-          )
-        ),
-        React.createElement("tbody", null,
-          openWos.slice(0, 20).map(function(w, i) {
-            var pColor = w.priority === "KRİTİK" ? "#ff5252" : w.priority === "YÜKSEK" ? "#ff9800" : "#64b5f6";
-            return React.createElement("tr", { key: w.id, style: { borderBottom: "1px solid #1a3a6b", background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,.03)" } },
-              React.createElement("td", { style: { padding: "8px 10px", color: "#fff", fontWeight: 700 } }, w.id),
-              React.createElement("td", { style: { padding: "8px 10px", color: "#b0bec5" } }, w.mold_id),
-              React.createElement("td", { style: { padding: "8px 10px", color: "#b0bec5" } }, w.type),
-              React.createElement("td", { style: { padding: "8px 10px", color: pColor, fontWeight: 700 } }, w.priority),
-              React.createElement("td", { style: { padding: "8px 10px", color: "#64b5f6" } }, w.status),
-              React.createElement("td", { style: { padding: "8px 10px", color: "#78909c", fontSize: 11 } }, (w.created_at || "").slice(0, 16))
-            );
-          })
-        )
+
+      // SAĞ: İş Havuzu — üstlenme butonu
+      React.createElement("div",{style:{background:"#0d1a2e",borderRadius:12,padding:14,maxHeight:400,overflowY:"auto",border:"2px solid #1a3a6b"}},
+        React.createElement("h3",{style:{fontSize:14,fontWeight:800,marginBottom:10,color:"#ff9800"}},"🔧 İş Havuzu — Üstlenmeye Açık ("+(d.poolWos||[]).length+")"),
+        (d.poolWos||[]).length===0 && React.createElement("div",{style:{color:"#4a6a8a",fontSize:13,padding:20,textAlign:"center"}},"Havuzda bekleyen iş yok"),
+        (d.poolWos||[]).map(function(w){
+          var pColor = w.priority==="KRİTİK"?"#ff5252":w.priority==="YÜKSEK"?"#ff9800":"#64b5f6";
+          return React.createElement("div",{key:w.id,style:{background:"#111e33",borderRadius:8,padding:"10px 12px",marginBottom:8,border:"1px solid #1a3a6b"}},
+            React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
+              React.createElement("div",null,
+                React.createElement("div",{style:{fontWeight:700,color:"#fff",fontSize:13}},w.id),
+                React.createElement("div",{style:{color:"#78909c",fontSize:10,marginTop:2}},w.mold_id+" · "+w.type),
+                React.createElement("div",{style:{color:"#4a6a8a",fontSize:9,marginTop:2}},w.description)
+              ),
+              React.createElement("div",{style:{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}},
+                React.createElement("span",{style:{color:pColor,fontWeight:700,fontSize:10}},w.priority),
+                React.createElement("button",{
+                  onClick:function(){setClaimModal(w);setClaimUser("");setClaimPass("");setClaimErr("");},
+                  style:{background:"#e65100",color:"#fff",border:"none",borderRadius:6,padding:"6px 14px",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}
+                },"🤚 Üstlen")
+              )
+            )
+          );
+        })
       )
     ),
 
     // Tedarikçideki kalıplar
-    transferMolds.length > 0 && React.createElement("div", {
-      style: { background: "#111e33", borderRadius: 12, padding: 16, marginTop: 16 }
-    },
-      React.createElement("h3", { style: { fontSize: 16, fontWeight: 800, marginBottom: 12, color: "#ce93d8" } },
-        "🚚 Tedarikçideki Kalıplar (" + transferMolds.length + ")"
-      ),
-      transferMolds.map(function(m) {
-        return React.createElement("div", { key: m.id, style: { display: "inline-block", background: "#1a2744", borderRadius: 8, padding: "8px 14px", margin: 4, fontSize: 12 } },
-          React.createElement("span", { style: { fontWeight: 700, color: "#ce93d8" } }, m.id),
-          m.transfer_to && React.createElement("span", { style: { color: "#78909c", marginLeft: 8 } }, "→ " + m.transfer_to)
+    (d.transferMolds||[]).length > 0 && React.createElement("div",{style:{background:"#111e33",borderRadius:12,padding:14}},
+      React.createElement("h3",{style:{fontSize:14,fontWeight:800,marginBottom:10,color:"#ce93d8"}},"🚚 Tedarikçideki Kalıplar ("+(d.transferMolds||[]).length+")"),
+      (d.transferMolds||[]).map(function(m){
+        return React.createElement("span",{key:m.id,style:{display:"inline-block",background:"#1a2744",borderRadius:8,padding:"6px 12px",margin:3,fontSize:11}},
+          React.createElement("strong",{style:{color:"#ce93d8"}},m.id),
+          m.transfer_to && React.createElement("span",{style:{color:"#78909c",marginLeft:6}},"→ "+m.transfer_to)
         );
       })
+    ),
+
+    // Üstlenme modalı
+    claimModal && React.createElement("div",{style:{position:"fixed",top:0,left:0,right:0,bottom:0,background:"rgba(0,0,0,.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999},onClick:function(e){if(e.target===e.currentTarget)setClaimModal(null);}},
+      React.createElement("div",{style:{background:"#fff",borderRadius:16,padding:"28px 24px",width:"100%",maxWidth:380,boxShadow:"0 20px 60px rgba(0,0,0,.4)"}},
+        React.createElement("h2",{style:{fontSize:16,fontWeight:800,color:"#0f2044",margin:"0 0 4px"}},"🤚 İş Emri Üstlen"),
+        React.createElement("div",{style:{fontSize:11,color:"#6b7fa3",marginBottom:16}},claimModal.id+" — "+claimModal.mold_id+" · "+claimModal.type),
+        React.createElement("div",{style:{marginBottom:12}},
+          React.createElement("label",{style:{display:"block",fontSize:11,fontWeight:700,color:"#0f2044",marginBottom:4}},"Kullanıcı Adı"),
+          React.createElement("input",{style:{width:"100%",padding:"10px 12px",border:"2px solid #e8edf2",borderRadius:8,fontSize:13,boxSizing:"border-box"},value:claimUser,onChange:function(e){setClaimUser(e.target.value);},onKeyDown:function(e){if(e.key==="Enter")doClaim();}})
+        ),
+        React.createElement("div",{style:{marginBottom:16}},
+          React.createElement("label",{style:{display:"block",fontSize:11,fontWeight:700,color:"#0f2044",marginBottom:4}},"Şifre"),
+          React.createElement("input",{type:"password",style:{width:"100%",padding:"10px 12px",border:"2px solid #e8edf2",borderRadius:8,fontSize:13,boxSizing:"border-box"},value:claimPass,onChange:function(e){setClaimPass(e.target.value);},onKeyDown:function(e){if(e.key==="Enter")doClaim();}})
+        ),
+        claimErr && React.createElement("div",{style:{background:"#ffebee",color:"#c62828",padding:"8px 12px",borderRadius:6,fontSize:11,marginBottom:12,fontWeight:600}},claimErr),
+        React.createElement("div",{style:{display:"flex",gap:8}},
+          React.createElement("button",{onClick:function(){setClaimModal(null);},style:{flex:1,padding:"10px",background:"#f5f7fb",color:"#0f2044",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}},"İptal"),
+          React.createElement("button",{onClick:doClaim,disabled:claimLoading,style:{flex:1,padding:"10px",background:claimLoading?"#999":"#e65100",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:claimLoading?"not-allowed":"pointer"}},claimLoading?"⏳ Giriş yapılıyor...":"Giriş Yap ve Üstlen")
+        )
+      )
     )
   );
 }
+
 
 ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(App, null));
 
