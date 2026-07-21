@@ -236,6 +236,12 @@ app.get("/api/tv", (req, res) => {
       id: m.id, transfer_to: m.transfer_to, transfer_date: m.transfer_date,
       transfer_return_date: m.transfer_return_date
     })),
+    // Devam eden işler — kim hangi işte çalışıyor
+    inProgressWos: wos.filter(w => w.status === "DEVAM_EDİYOR" || w.status === "DEVAM_EDIYOR").slice(0, 20).map(w => ({
+      id: w.id, mold_id: w.mold_id, type: w.type, priority: w.priority,
+      description: (w.description||"").slice(0,60), assigned: w.assigned||"",
+      started_at: w.started_at, cavity_no: w.cavity_no
+    })),
     ts: new Date().toISOString()
   });
 });
@@ -279,6 +285,11 @@ app.post("/api/system/reset", auth, adminOnly, (req, res) => {
   if (type === "auditlog") { DB.auditLog = []; saveDB(); }
   addAudit(req.user.id, req.user.name, req.user.role, "Sistem Sıfırlama", "system", type, `${type} sıfırlandı`);
   res.json({ ok: true });
+});
+
+// /tv — Doğrudan TV Modu (login gerektirmez)
+app.get("/tv", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "tv.html"));
 });
 
 // ── STATİK + SPA ──

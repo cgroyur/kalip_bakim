@@ -688,8 +688,28 @@ function App() {
   }, []); // eslint-disable-line
 
   // State değişince API'ye kaydet (debounced persist)
+  // WO sayısı değişim bildirimi
+  var _notifRef = useRef((data.wos||[]).length);
   useEffect(function () {
     persist(data);
+    var currentCount = (data.wos||[]).length;
+    if (_notifRef.current > 0 && currentCount > _notifRef.current) {
+      var diff = currentCount - _notifRef.current;
+      // Pop-up göster
+      var n = document.createElement("div");
+      n.style.cssText = "position:fixed;top:16px;right:16px;background:#c62828;color:#fff;padding:14px 22px;border-radius:10px;font-size:14px;font-weight:700;z-index:99999;box-shadow:0 8px 32px rgba(0,0,0,.4);animation:slideIn .3s ease;cursor:pointer;max-width:400px";
+      n.textContent = "🚨 " + diff + " yeni iş emri oluşturuldu!";
+      n.onclick = function(){ n.remove(); };
+      document.body.appendChild(n);
+      setTimeout(function(){ if(n.parentNode) n.remove(); }, 8000);
+      // Ses
+      try{var a=new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleVQlAMKc5dqeTkUbr6XU2pddQiKYr8/XnV5JKZOzytWcYE0slbbG0ZpiTy6Xt8LNmWJRMJa4v8qXYlMylri+x5ZiVDOWuL3GlWJUNJa4vcWUYlU0lri8xZNhVTWXuLzEkmFVNQ==");a.volume=0.3;a.play();}catch(e){}
+      // Push bildirim
+      if("Notification" in window && Notification.permission==="granted"){
+        new Notification("CMMS — Yeni İş Emri",{body:diff+" yeni iş emri!",icon:"/icon.svg"});
+      }
+    }
+    _notifRef.current = currentCount;
   }, [data]);
 
   // Audit log'u API'ye de gönder
@@ -1209,6 +1229,10 @@ function Sidebar(_ref2) {
       b: wos.filter(function (w) {
         return w.assigned === user.id && w.status !== "KAPATILDI";
       }).length || null
+    }, {
+      id: "techpool",
+      ico: "📥",
+      l: "Arıza Havuzu"
     }, {
       id: "waiting",
       ico: "⏸",
@@ -4183,7 +4207,46 @@ function LeaderPanel(_ref24) {
       addAuditLog: addAuditLog
     }));
   }
-    if (page === "tvmode") { return React.createElement(TVModePage, { data: data }); }
+    if (page === "techpool") {
+    var poolWos = (data.wos||[]).filter(function(w){ return (w.status==="BEKLEMEDE" && !w.assigned) || w.status==="BEKLEMEDE"; });
+    return React.createElement("div",{className:"anim"},
+      React.createElement("h2",{style:{fontSize:16,fontWeight:800,color:"#0f2044",marginBottom:14}},"📥 Arıza Havuzu — Üstlenmeye Açık İşler ("+poolWos.length+")"),
+      poolWos.length===0 && React.createElement("div",{className:"card",style:{textAlign:"center",padding:40,color:"#6b7fa3"}},"Havuzda bekleyen iş yok — tüm işler atanmış 👍"),
+      poolWos.map(function(wo){
+        var pColor = wo.priority==="KRİTİK"?"#c62828":wo.priority==="YÜKSEK"?"#e65100":"#1565c0";
+        var mold = (data.molds||[]).find(function(m){return m.id===wo.mold_id;});
+        return React.createElement("div",{key:wo.id,className:"card",style:{marginBottom:10,borderLeft:"4px solid "+pColor}},
+          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}},
+            React.createElement("div",{style:{flex:1}},
+              React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center",marginBottom:4}},
+                React.createElement("span",{style:{fontWeight:800,fontSize:14,color:"#0f2044"}},wo.id),
+                React.createElement("span",{style:{color:pColor,fontWeight:700,fontSize:10,background:pColor+"15",padding:"2px 8px",borderRadius:4}},wo.priority),
+                React.createElement("span",{style:{fontSize:10,color:"#6b7fa3"}},wo.type)
+              ),
+              React.createElement("div",{style:{fontSize:12,color:"#2d3748",marginBottom:2}},wo.description||"Açıklama yok"),
+              React.createElement("div",{style:{fontSize:10,color:"#6b7fa3"}},wo.mold_id+(mold?" — "+(mold.part_name||"").slice(0,30):"")+" · "+(wo.created_at||"").slice(0,16)),
+              wo.cavity_no && React.createElement("div",{style:{fontSize:10,color:"#9aa5b4",marginTop:2}},"Göz: "+wo.cavity_no)
+            ),
+            React.createElement("button",{
+              className:"btn",
+              style:{background:"#e65100",color:"#fff",fontWeight:700,fontSize:12,flexShrink:0,padding:"10px 20px"},
+              onClick:function(){
+                if(!window.confirm(wo.id+" iş emrini üstlenmek istiyor musunuz?")) return;
+                updWO(wo.id, function(w){
+                  w.assigned = user.id;
+                  w.status = "DEVAM_EDİYOR";
+                  w.started_at = nowStr();
+                  return w;
+                });
+                addAuditLog && addAuditLog({user_id:user.id,user_name:user.name,role:user.role,action:"İş Üstlenildi",entity_type:"wo",entity_id:wo.id,detail:user.name+" "+wo.id+" iş emrini havuzdan üstlendi"});
+              }
+            },"🤚 Üstlen")
+          )
+        );
+      })
+    );
+  }
+  if (page === "tvmode") { return React.createElement(TVModePage, { data: data }); }
   if (page === "matrix") {
     return /*#__PURE__*/React.createElement("div", {
       className: "anim",
@@ -5265,7 +5328,46 @@ function OperatorPanel(_ref26) {
       onClick: submit
     }, "\uD83D\uDCE4 Kal\u0131p At\xF6lyesine G\xF6nder"))));
   }
-    if (page === "tvmode") { return React.createElement(TVModePage, { data: data }); }
+    if (page === "techpool") {
+    var poolWos = (data.wos||[]).filter(function(w){ return (w.status==="BEKLEMEDE" && !w.assigned) || w.status==="BEKLEMEDE"; });
+    return React.createElement("div",{className:"anim"},
+      React.createElement("h2",{style:{fontSize:16,fontWeight:800,color:"#0f2044",marginBottom:14}},"📥 Arıza Havuzu — Üstlenmeye Açık İşler ("+poolWos.length+")"),
+      poolWos.length===0 && React.createElement("div",{className:"card",style:{textAlign:"center",padding:40,color:"#6b7fa3"}},"Havuzda bekleyen iş yok — tüm işler atanmış 👍"),
+      poolWos.map(function(wo){
+        var pColor = wo.priority==="KRİTİK"?"#c62828":wo.priority==="YÜKSEK"?"#e65100":"#1565c0";
+        var mold = (data.molds||[]).find(function(m){return m.id===wo.mold_id;});
+        return React.createElement("div",{key:wo.id,className:"card",style:{marginBottom:10,borderLeft:"4px solid "+pColor}},
+          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}},
+            React.createElement("div",{style:{flex:1}},
+              React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center",marginBottom:4}},
+                React.createElement("span",{style:{fontWeight:800,fontSize:14,color:"#0f2044"}},wo.id),
+                React.createElement("span",{style:{color:pColor,fontWeight:700,fontSize:10,background:pColor+"15",padding:"2px 8px",borderRadius:4}},wo.priority),
+                React.createElement("span",{style:{fontSize:10,color:"#6b7fa3"}},wo.type)
+              ),
+              React.createElement("div",{style:{fontSize:12,color:"#2d3748",marginBottom:2}},wo.description||"Açıklama yok"),
+              React.createElement("div",{style:{fontSize:10,color:"#6b7fa3"}},wo.mold_id+(mold?" — "+(mold.part_name||"").slice(0,30):"")+" · "+(wo.created_at||"").slice(0,16)),
+              wo.cavity_no && React.createElement("div",{style:{fontSize:10,color:"#9aa5b4",marginTop:2}},"Göz: "+wo.cavity_no)
+            ),
+            React.createElement("button",{
+              className:"btn",
+              style:{background:"#e65100",color:"#fff",fontWeight:700,fontSize:12,flexShrink:0,padding:"10px 20px"},
+              onClick:function(){
+                if(!window.confirm(wo.id+" iş emrini üstlenmek istiyor musunuz?")) return;
+                updWO(wo.id, function(w){
+                  w.assigned = user.id;
+                  w.status = "DEVAM_EDİYOR";
+                  w.started_at = nowStr();
+                  return w;
+                });
+                addAuditLog && addAuditLog({user_id:user.id,user_name:user.name,role:user.role,action:"İş Üstlenildi",entity_type:"wo",entity_id:wo.id,detail:user.name+" "+wo.id+" iş emrini havuzdan üstlendi"});
+              }
+            },"🤚 Üstlen")
+          )
+        );
+      })
+    );
+  }
+  if (page === "tvmode") { return React.createElement(TVModePage, { data: data }); }
   if (page === "history") {
     return /*#__PURE__*/React.createElement("div", {
       className: "anim"
@@ -5643,7 +5745,46 @@ function TechPanel(_ref27) {
       }
     }, btns));
   };
-    if (page === "tvmode") { return React.createElement(TVModePage, { data: data }); }
+    if (page === "techpool") {
+    var poolWos = (data.wos||[]).filter(function(w){ return (w.status==="BEKLEMEDE" && !w.assigned) || w.status==="BEKLEMEDE"; });
+    return React.createElement("div",{className:"anim"},
+      React.createElement("h2",{style:{fontSize:16,fontWeight:800,color:"#0f2044",marginBottom:14}},"📥 Arıza Havuzu — Üstlenmeye Açık İşler ("+poolWos.length+")"),
+      poolWos.length===0 && React.createElement("div",{className:"card",style:{textAlign:"center",padding:40,color:"#6b7fa3"}},"Havuzda bekleyen iş yok — tüm işler atanmış 👍"),
+      poolWos.map(function(wo){
+        var pColor = wo.priority==="KRİTİK"?"#c62828":wo.priority==="YÜKSEK"?"#e65100":"#1565c0";
+        var mold = (data.molds||[]).find(function(m){return m.id===wo.mold_id;});
+        return React.createElement("div",{key:wo.id,className:"card",style:{marginBottom:10,borderLeft:"4px solid "+pColor}},
+          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}},
+            React.createElement("div",{style:{flex:1}},
+              React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center",marginBottom:4}},
+                React.createElement("span",{style:{fontWeight:800,fontSize:14,color:"#0f2044"}},wo.id),
+                React.createElement("span",{style:{color:pColor,fontWeight:700,fontSize:10,background:pColor+"15",padding:"2px 8px",borderRadius:4}},wo.priority),
+                React.createElement("span",{style:{fontSize:10,color:"#6b7fa3"}},wo.type)
+              ),
+              React.createElement("div",{style:{fontSize:12,color:"#2d3748",marginBottom:2}},wo.description||"Açıklama yok"),
+              React.createElement("div",{style:{fontSize:10,color:"#6b7fa3"}},wo.mold_id+(mold?" — "+(mold.part_name||"").slice(0,30):"")+" · "+(wo.created_at||"").slice(0,16)),
+              wo.cavity_no && React.createElement("div",{style:{fontSize:10,color:"#9aa5b4",marginTop:2}},"Göz: "+wo.cavity_no)
+            ),
+            React.createElement("button",{
+              className:"btn",
+              style:{background:"#e65100",color:"#fff",fontWeight:700,fontSize:12,flexShrink:0,padding:"10px 20px"},
+              onClick:function(){
+                if(!window.confirm(wo.id+" iş emrini üstlenmek istiyor musunuz?")) return;
+                updWO(wo.id, function(w){
+                  w.assigned = user.id;
+                  w.status = "DEVAM_EDİYOR";
+                  w.started_at = nowStr();
+                  return w;
+                });
+                addAuditLog && addAuditLog({user_id:user.id,user_name:user.name,role:user.role,action:"İş Üstlenildi",entity_type:"wo",entity_id:wo.id,detail:user.name+" "+wo.id+" iş emrini havuzdan üstlendi"});
+              }
+            },"🤚 Üstlen")
+          )
+        );
+      })
+    );
+  }
+  if (page === "tvmode") { return React.createElement(TVModePage, { data: data }); }
   if (page === "my") {
     // Atanmamış bekleyen işler - teknisyen kendine alabilir
     var unassignedPool = wos.filter(function (w) {
