@@ -23,9 +23,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .p-KRİTİK,.p-CRITICAL{color:#ff5252;background:rgba(255,82,82,.15)}.p-YÜKSEK,.p-HIGH{color:#ff9800;background:rgba(255,152,0,.15)}
 .p-NORMAL{color:#64b5f6;background:rgba(100,181,246,.15)}.p-DÜŞÜK,.p-LOW{color:#78909c;background:rgba(120,144,156,.15)}
 .progress-row{background:#0d1a2e;border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;border-left:3px solid #1565c0}
-.corner-btn{position:fixed;bottom:16px;right:16px;z-index:100;display:flex;gap:8px;align-items:center}
-.corner-btn button,.corner-btn a{background:rgba(255,255,255,.1);color:#7fa8d4;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:8px 14px;font-size:11px;font-weight:600;cursor:pointer;text-decoration:none;backdrop-filter:blur(8px);transition:all .2s}
-.corner-btn button:hover,.corner-btn a:hover{background:rgba(255,255,255,.2);color:#fff}
 /* Claim Modal */
 .overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(10,22,40,.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:9999}
 .claim-card{background:linear-gradient(145deg,#111e33,#0d1a2e);border:1px solid #1a3a6b;border-radius:20px;padding:32px 28px;width:100%;max-width:340px;box-shadow:0 24px 80px rgba(0,0,0,.6)}
@@ -87,7 +84,10 @@ function render(d){
   // Top
   h+='<div class="top"><div><h1 style="font-size:20px;font-weight:900">🏭 '+t("title")+'</h1>';
   h+='<div style="font-size:10px;color:#4a6a8a;margin-top:2px">'+now.toLocaleDateString("tr-TR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})+" — "+now.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})+" · 12"+t("update")+"</div></div>";
-  h+='<button onclick="toggleFS()" style="background:#1565c0;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:11px;font-weight:700;cursor:pointer" id="fs-btn">⛶ '+t("fullscreen")+'</button></div>';
+  h+='<div style="display:flex;gap:8px;align-items:center">';
+  h+='<a href="/" style="background:rgba(255,255,255,.1);color:#7fa8d4;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:7px 14px;font-size:11px;font-weight:600;cursor:pointer;text-decoration:none;backdrop-filter:blur(8px);transition:all .2s">🔐 Giriş Yap</a>';
+  h+='<button onclick="toggleFS()" style="background:#1565c0;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:11px;font-weight:700;cursor:pointer">⛶ '+t("fullscreen")+'</button>';
+  h+='</div></div>';
   // KPI
   h+='<div class="grid kpi-grid">';
   h+=kpi("📋",d.open,t("open"),d.open>10?"#e65100":"#64b5f6");

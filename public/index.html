@@ -186,7 +186,7 @@ var apiHeaders = function() {
 var apiGet = async function(url) {
   try {
     var r = await fetch(url, { headers: apiHeaders() });
-    if (r.status === 401) { CMMS_TOKEN=null; localStorage.removeItem("cmms_token"); return null; }
+    if (r.status === 401) { CMMS_TOKEN=null; localStorage.removeItem("cmms_token"); window.location.href="/tv"; return null; }
     return r.ok ? r.json() : null;
   } catch(e) { return null; }
 };
@@ -247,7 +247,7 @@ if (typeof window !== "undefined") {
         CMMS_TOKEN = null;
         localStorage.removeItem("cmms_token");
         alert("30 dakika hareketsizlik nedeniyle oturumunuz sonlandırıldı.");
-        location.reload();
+        window.location.href = "/tv";
       }
     }, IDLE_LIMIT);
   };
@@ -5381,7 +5381,7 @@ function OperatorPanel(_ref26) {
                   w.started_at = nowStr();
                   return w;
                 });
-                addAuditLog && addAuditLog({user_id:user.id,user_name:user.name,role:user.role,action:"İş Üstlenildi",entity_type:"wo",entity_id:wo.id,detail:user.name+" "+wo.id+" iş emrini havuzdan üstlendi"});
+                addAuditLog && addAuditLog({user_id:user.id,user_name:user.name,role:user.role,action:"İş Üstlenildi",entity_type:"wo",entity_id:wo.id,detail:user.name+" "+wo.id+" üstlendi"});
               }
             },"🤚 Üstlen")
           )
@@ -5389,7 +5389,6 @@ function OperatorPanel(_ref26) {
       })
     );
   }
-  if (page === "tvmode") { return React.createElement(TVModePage, { data: data }); }
   if (page === "history") {
     return /*#__PURE__*/React.createElement("div", {
       className: "anim"
