@@ -207,24 +207,18 @@ var persist = function persist(d) {
   clearTimeout(_persistTimer);
   _persistTimer = setTimeout(function() {
     _flushPersist();
-  }, 1500);
+  }, 800);
 };
 var _flushPersist = function() {
   if (!_lastData || !CMMS_TOKEN || !_apiLoaded) return;
   var d = _lastData;
   _lastData = null;
   clearTimeout(_persistTimer);
-  // Senkron XHR ile anında kaydet (beforeunload'da async çalışmaz)
+  // navigator.sendBeacon — tarayıcı kapanırken bile çalışır, bloklama yapmaz
   try {
-    var xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/state", false); // false = senkron
-    xhr.setRequestHeader("Content-Type", "application/json");
-    xhr.setRequestHeader("Authorization", "Bearer " + CMMS_TOKEN);
-    xhr.send(JSON.stringify(d));
-  } catch(e) {
-    // Async fallback
-    apiPost("/api/state", d).catch(function(){});
-  }
+    var blob = new Blob([JSON.stringify(d)], {type: "application/json"});
+    navigator.sendBeacon("/api/state?token=" + CMMS_TOKEN, blob);
+  } catch(e) {}
   try {
     localStorage.setItem(LS + "_meta", JSON.stringify({
       ts: Date.now(), moldCount: (d.molds||[]).length, woCount: (d.wos||[]).length
@@ -1135,6 +1129,10 @@ function Sidebar(_ref2) {
       ico: "📋",
       l: "İş Emirleri"
     }, {
+      id: "pool",
+      ico: "📥",
+      l: "Arıza Havuzu"
+    }, {
       id: "create_wo",
       ico: "➕",
       l: "İş Emri Oluştur"
@@ -1162,6 +1160,10 @@ function Sidebar(_ref2) {
       id: "audit",
       ico: "📋",
       l: "Denetim İzi"
+    }, {
+      id: "permissions",
+      ico: "🔑",
+      l: "Yetki Yönetimi"
     }, {
       id: "sysadmin",
       ico: "⚙️",
@@ -1201,14 +1203,6 @@ function Sidebar(_ref2) {
       ico: "🚨",
       l: "Kritik Analiz"
     }, {
-      id: "audit",
-      ico: "📋",
-      l: "Denetim İzi"
-    }, {
-      id: "sysadmin",
-      ico: "⚙️",
-      l: "Sistem Yönetimi"
-    }, {
       id: "tvmode",
       ico: "📺",
       l: "TV Modu"
@@ -1221,10 +1215,6 @@ function Sidebar(_ref2) {
       id: "history",
       ico: "📋",
       l: "Geçmiş"
-    }, {
-      id: "tvmode",
-      ico: "📺",
-      l: "TV Modu"
     }],
     tech: [{
       id: "my",
@@ -1245,6 +1235,10 @@ function Sidebar(_ref2) {
       id: "done",
       ico: "✅",
       l: "Tamamlananlar"
+    }, {
+      id: "tvmode",
+      ico: "📺",
+      l: "TV Modu"
     }]
   };
   var RC = {
@@ -3689,7 +3683,35 @@ function AdminPanel(_ref19) {
       data: data
     });
   }
-    if (page === "create_wo") {
+      if (page === "pool") {
+    var _poolWos = (data.wos||[]).filter(function(w){ return w.status==="BEKLEMEDE" && !w.assigned; });
+    return React.createElement("div",{className:"anim"},
+      React.createElement("h2",{style:{fontSize:16,fontWeight:800,color:"#0f2044",marginBottom:14}},"📥 Arıza Havuzu ("+_poolWos.length+")"),
+      _poolWos.length===0 && React.createElement("div",{className:"card",style:{textAlign:"center",padding:40,color:"#6b7fa3"}},"Havuzda bekleyen iş yok 👍"),
+      _poolWos.map(function(wo){
+        var mold=(data.molds||[]).find(function(m){return m.id===wo.mold_id;});
+        var techs=(data.users||[]).filter(function(u){return u.role==="tech";});
+        return React.createElement("div",{key:wo.id,className:"card",style:{marginBottom:10,borderLeft:"4px solid "+(wo.priority==="KRİTİK"?"#c62828":"#1565c0")}},
+          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}},
+            React.createElement("div",{style:{flex:1}},
+              React.createElement("div",{style:{fontWeight:800,fontSize:14,color:"#0f2044"}},wo.id," ",React.createElement("span",{style:{fontSize:10,color:wo.priority==="KRİTİK"?"#c62828":"#6b7fa3"}},wo.priority)),
+              React.createElement("div",{style:{fontSize:12,color:"#2d3748",marginTop:2}},wo.description||""),
+              React.createElement("div",{style:{fontSize:10,color:"#6b7fa3",marginTop:2}},wo.mold_id+(mold?" — "+(mold.part_name||"").slice(0,30):""))
+            ),
+            React.createElement("select",{className:"form-input",style:{width:180,fontSize:11},defaultValue:"",onChange:function(e){
+              if(!e.target.value)return;
+              updWO(wo.id,function(w){w.assigned=e.target.value;return w;});
+              addAuditLog&&addAuditLog({user_id:user.id,user_name:user.name,role:"admin",action:"İş Atandı",entity_type:"wo",entity_id:wo.id,detail:wo.id+" atandı"});
+            }},
+              React.createElement("option",{value:""},"— Teknisyen Ata —"),
+              techs.map(function(t){return React.createElement("option",{key:t.id,value:t.id},t.name);})
+            )
+          )
+        );
+      })
+    );
+  }
+  if (page === "create_wo") {
     var _cw1 = useState(true), _cw2 = _slicedToArray(_cw1, 2), showCreateWO = _cw2[0], setShowCreateWO = _cw2[1];
     return React.createElement("div", { className: "anim" },
       React.createElement(ManualWOModal, {
@@ -3702,6 +3724,57 @@ function AdminPanel(_ref19) {
             detail: (wo.mold_id || "") + " — " + (wo.type || "") + ": " + (wo.description || "").substring(0, 60) }); } catch(e) {}
         },
         onClose: function() { setPage("jobs"); }
+      })
+    );
+  }
+    if (page === "permissions") {
+    var _pm1=useState(null),_pm2=_slicedToArray(_pm1,2),permEdit=_pm2[0],setPermEdit=_pm2[1];
+    var rolePerms = {
+      leader: {label:"Lider",pages:["dash","inventory","jobs","matrix","molds","reports","critical","tvmode"],desc:{dash:"Dashboard",inventory:"Envanter Görünümü",jobs:"Arıza Havuzu",matrix:"Teknisyen Matrisi",molds:"Kalıplar",reports:"Raporlar",critical:"Kritik Analiz",tvmode:"TV Modu"}},
+      tech: {label:"Teknisyen",pages:["my","techpool","waiting","done","tvmode"],desc:{my:"İşlerim",techpool:"Arıza Havuzu",waiting:"Beklemeye Alınan",done:"Tamamlananlar",tvmode:"TV Modu"}},
+      op: {label:"Operatör",pages:["report","history"],desc:{report:"Arıza Bildir",history:"Geçmiş"}}
+    };
+    return React.createElement("div",{className:"anim"},
+      React.createElement("h2",{style:{fontSize:16,fontWeight:800,color:"#0f2044",marginBottom:6}},"🔑 Yetki Yönetimi"),
+      React.createElement("p",{style:{fontSize:11,color:"#6b7fa3",marginBottom:16}},"Her rolün erişebildiği sayfaları görüntüleyin. Admin tüm sayfalara tam erişime sahiptir."),
+      // Admin kartı
+      React.createElement("div",{className:"card",style:{marginBottom:12,borderLeft:"4px solid #ff9800"}},
+        React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
+          React.createElement("div",null,
+            React.createElement("div",{style:{fontWeight:800,fontSize:14,color:"#0f2044"}},"👔 Admin"),
+            React.createElement("div",{style:{fontSize:11,color:"#6b7fa3",marginTop:2}},"Tam yetki — tüm sayfalar, kullanıcı yönetimi, sistem ayarları, yedekleme, QR kod")
+          ),
+          React.createElement("span",{style:{background:"#ff9800",color:"#fff",padding:"4px 12px",borderRadius:20,fontSize:10,fontWeight:700}},"TAM ERİŞİM")
+        )
+      ),
+      // Diğer roller
+      Object.keys(rolePerms).map(function(role){
+        var rp=rolePerms[role];
+        var userCount=(data.users||[]).filter(function(u){return u.role===role;}).length;
+        return React.createElement("div",{key:role,className:"card",style:{marginBottom:12,borderLeft:"4px solid "+(role==="leader"?"#1565c0":role==="tech"?"#e65100":"#1a6b3c")}},
+          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}},
+            React.createElement("div",null,
+              React.createElement("div",{style:{fontWeight:800,fontSize:14,color:"#0f2044"}},role==="leader"?"👷 "+rp.label:role==="tech"?"🔧 "+rp.label:"⚙️ "+rp.label),
+              React.createElement("div",{style:{fontSize:11,color:"#6b7fa3",marginTop:2}},userCount+" kullanıcı bu role sahip")
+            )
+          ),
+          React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
+            rp.pages.map(function(p){
+              return React.createElement("span",{key:p,style:{background:"#f0f4ff",color:"#1565c0",padding:"4px 10px",borderRadius:6,fontSize:10,fontWeight:600,border:"1px solid #c5cae9"}},
+                rp.desc[p]||p
+              );
+            })
+          ),
+          // Bu role ait kullanıcılar
+          React.createElement("div",{style:{marginTop:10,borderTop:"1px solid #f0f3f7",paddingTop:8}},
+            React.createElement("div",{style:{fontSize:10,color:"#9aa5b4",marginBottom:4}},"Bu roldeki kullanıcılar:"),
+            React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
+              (data.users||[]).filter(function(u){return u.role===role;}).map(function(u){
+                return React.createElement("span",{key:u.id,style:{background:"#fff",border:"1px solid #e8edf2",borderRadius:4,padding:"2px 8px",fontSize:10,color:"#0f2044"}},u.name||u.username);
+              })
+            )
+          )
+        );
       })
     );
   }
@@ -3747,6 +3820,7 @@ function LeaderPanel(_ref24) {
     addMold = _ref24.addMold,
     updMold = _ref24.updMold,
     setMolds = _ref24.setMolds,
+    setData = _ref24.setData,
     openMold = _ref24.openMold,
     addAuditLog = _ref24.addAuditLog,
     deleteWO = _ref24.deleteWO,
@@ -3800,6 +3874,15 @@ function LeaderPanel(_ref24) {
   var techsOnly = users.filter(function (u) {
     return u.role === "tech";
   });
+  // Sayfa değiştiğinde API'den güncel veriyi çek
+  useEffect(function() {
+    if (!CMMS_TOKEN) return;
+    apiGet("/api/state").then(function(state) {
+      if (state && state.wos && setData) {
+        setData(function(prev) { return Object.assign({}, prev, { wos: state.wos }); });
+      }
+    });
+  }, [page]);
   var unassigned = wos.filter(function (w) {
     return w.status === "BEKLEMEDE" && !w.assigned;
   }).sort(function (a, b) {
@@ -4268,6 +4351,7 @@ function LeaderPanel(_ref24) {
       })
     );
   }
+  
   if (page === "tvmode") { return React.createElement(TVModePage, { data: data }); }
   if (page === "matrix") {
     return /*#__PURE__*/React.createElement("div", {
@@ -5350,45 +5434,7 @@ function OperatorPanel(_ref26) {
       onClick: submit
     }, "\uD83D\uDCE4 Kal\u0131p At\xF6lyesine G\xF6nder"))));
   }
-    if (page === "techpool") {
-    var poolWos = (data.wos||[]).filter(function(w){ return (w.status==="BEKLEMEDE" && !w.assigned) || w.status==="BEKLEMEDE"; });
-    return React.createElement("div",{className:"anim"},
-      React.createElement("h2",{style:{fontSize:16,fontWeight:800,color:"#0f2044",marginBottom:14}},"📥 Arıza Havuzu — Üstlenmeye Açık İşler ("+poolWos.length+")"),
-      poolWos.length===0 && React.createElement("div",{className:"card",style:{textAlign:"center",padding:40,color:"#6b7fa3"}},"Havuzda bekleyen iş yok — tüm işler atanmış 👍"),
-      poolWos.map(function(wo){
-        var pColor = wo.priority==="KRİTİK"?"#c62828":wo.priority==="YÜKSEK"?"#e65100":"#1565c0";
-        var mold = (data.molds||[]).find(function(m){return m.id===wo.mold_id;});
-        return React.createElement("div",{key:wo.id,className:"card",style:{marginBottom:10,borderLeft:"4px solid "+pColor}},
-          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}},
-            React.createElement("div",{style:{flex:1}},
-              React.createElement("div",{style:{display:"flex",gap:8,alignItems:"center",marginBottom:4}},
-                React.createElement("span",{style:{fontWeight:800,fontSize:14,color:"#0f2044"}},wo.id),
-                React.createElement("span",{style:{color:pColor,fontWeight:700,fontSize:10,background:pColor+"15",padding:"2px 8px",borderRadius:4}},wo.priority),
-                React.createElement("span",{style:{fontSize:10,color:"#6b7fa3"}},wo.type)
-              ),
-              React.createElement("div",{style:{fontSize:12,color:"#2d3748",marginBottom:2}},wo.description||"Açıklama yok"),
-              React.createElement("div",{style:{fontSize:10,color:"#6b7fa3"}},wo.mold_id+(mold?" — "+(mold.part_name||"").slice(0,30):"")+" · "+(wo.created_at||"").slice(0,16)),
-              wo.cavity_no && React.createElement("div",{style:{fontSize:10,color:"#9aa5b4",marginTop:2}},"Göz: "+wo.cavity_no)
-            ),
-            React.createElement("button",{
-              className:"btn",
-              style:{background:"#e65100",color:"#fff",fontWeight:700,fontSize:12,flexShrink:0,padding:"10px 20px"},
-              onClick:function(){
-                if(!window.confirm(wo.id+" iş emrini üstlenmek istiyor musunuz?")) return;
-                updWO(wo.id, function(w){
-                  w.assigned = user.id;
-                  w.status = "DEVAM_EDİYOR";
-                  w.started_at = nowStr();
-                  return w;
-                });
-                addAuditLog && addAuditLog({user_id:user.id,user_name:user.name,role:user.role,action:"İş Üstlenildi",entity_type:"wo",entity_id:wo.id,detail:user.name+" "+wo.id+" üstlendi"});
-              }
-            },"🤚 Üstlen")
-          )
-        );
-      })
-    );
-  }
+    
   if (page === "history") {
     return /*#__PURE__*/React.createElement("div", {
       className: "anim"

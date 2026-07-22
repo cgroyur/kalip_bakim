@@ -115,7 +115,13 @@ app.get("/api/state", auth, (req, res) => {
   res.json(state);
 });
 
-app.post("/api/state", auth, (req, res) => {
+app.post("/api/state", (req, res, next) => {
+  // sendBeacon token'ı query param olarak gönderir
+  if (req.query.token && !req.headers.authorization) {
+    req.headers.authorization = "Bearer " + req.query.token;
+  }
+  auth(req, res, next);
+}, (req, res) => {
   const { users, auditLog, ...rest } = req.body;
   DB.state = rest;
   saveDB();
