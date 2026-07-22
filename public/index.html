@@ -947,8 +947,8 @@ function App() {
         localStorage.removeItem("cmms_token");
         localStorage.removeItem(LS+"_state");
       }
-      setUser(null);
-      setPage("dash");
+      // TV ekranına yönlendir
+      window.location.href = "/tv";
     },
     pendingCnt: pendingCnt,
     activeCnt: activeCnt,
@@ -1134,6 +1134,10 @@ function Sidebar(_ref2) {
       id: "jobs",
       ico: "📋",
       l: "İş Emirleri"
+    }, {
+      id: "create_wo",
+      ico: "➕",
+      l: "İş Emri Oluştur"
     }, {
       id: "spareparts",
       ico: "🔩",
@@ -2796,6 +2800,8 @@ function AdminPanel(_ref19) {
     setMolds = _ref19.setMolds,
     deleteMold = _ref19.deleteMold,
     deleteWO = _ref19.deleteWO,
+    addWO = _ref19.addWO,
+    updWO = _ref19.updWO,
     addUser = _ref19.addUser,
     updUser = _ref19.updUser,
     addAuditLog = _ref19.addAuditLog,
@@ -3197,7 +3203,7 @@ function AdminPanel(_ref19) {
                 return n > 0;
               });
               var next = (nums.length > 0 ? Math.max.apply(Math, _toConsumableArray(nums)) : 0) + 1;
-              return "WO-" + String(next).padStart(3, "0");
+              return "LG-" + String(next).padStart(3, "0");
             }(),
             mold_id: m.id,
             type: "PM",
@@ -3683,6 +3689,22 @@ function AdminPanel(_ref19) {
       data: data
     });
   }
+    if (page === "create_wo") {
+    var _cw1 = useState(true), _cw2 = _slicedToArray(_cw1, 2), showCreateWO = _cw2[0], setShowCreateWO = _cw2[1];
+    return React.createElement("div", { className: "anim" },
+      React.createElement(ManualWOModal, {
+        molds: data.molds, wos: data.wos, users: data.users,
+        currentUser: user,
+        onSave: function(wo) {
+          addWO(wo);
+          try { addAuditLog && addAuditLog({ user_id: user && user.id || "admin", user_name: user && user.name || "Admin",
+            role: "admin", action: "İş Emri Açıldı", entity_type: "wo", entity_id: wo.id,
+            detail: (wo.mold_id || "") + " — " + (wo.type || "") + ": " + (wo.description || "").substring(0, 60) }); } catch(e) {}
+        },
+        onClose: function() { setPage("jobs"); }
+      })
+    );
+  }
   if (page === "sysadmin") {
     return /*#__PURE__*/React.createElement(SysAdminPage, {
       data: data, deleteWO: deleteWO, deleteMold: deleteMold,
@@ -3847,7 +3869,7 @@ function LeaderPanel(_ref24) {
           return n > 0;
         });
         var next = (nums.length > 0 ? Math.max.apply(Math, _toConsumableArray(nums)) : 0) + 1;
-        return "WO-" + String(next).padStart(3, "0");
+        return "LG-" + String(next).padStart(3, "0");
       }(),
       mold_id: moldId,
       type: "PM",
@@ -4948,7 +4970,7 @@ function OperatorPanel(_ref26) {
           return n > 0;
         });
         var next = (nums.length > 0 ? Math.max.apply(Math, _toConsumableArray(nums)) : 0) + 1;
-        return "WO-" + String(next).padStart(3, "0");
+        return "LG-" + String(next).padStart(3, "0");
       }(),
       mold_id: f.mold_id,
       type: "ARIZ",
@@ -6039,7 +6061,7 @@ function TechPanel(_ref27) {
                 return n > 0;
               });
               var next = (nums.length > 0 ? Math.max.apply(Math, _toConsumableArray(nums)) : 0) + 1;
-              return "WO-" + String(next).padStart(3, "0");
+              return "LG-" + String(next).padStart(3, "0");
             }(),
             mold_id: m.id,
             type: "PM",
@@ -12197,7 +12219,7 @@ function ManualWOModal(_ref69) {
       return n > 0;
     });
     var nextNum = (existingNums.length > 0 ? Math.max.apply(Math, _toConsumableArray(existingNums)) : 0) + 1;
-    var woId = "WO-" + String(nextNum).padStart(3, "0");
+    var woId = "LG-" + String(nextNum).padStart(3, "0");
     var tech = techs.find(function (t) {
       return t.id === f.assigned_to;
     });

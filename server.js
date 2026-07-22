@@ -73,6 +73,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
   next();
 });
 
@@ -237,11 +238,14 @@ app.get("/api/tv", (req, res) => {
       transfer_return_date: m.transfer_return_date
     })),
     // Devam eden işler — kim hangi işte çalışıyor
-    inProgressWos: wos.filter(w => w.status === "DEVAM_EDİYOR" || w.status === "DEVAM_EDIYOR").slice(0, 20).map(w => ({
-      id: w.id, mold_id: w.mold_id, type: w.type, priority: w.priority,
-      description: (w.description||"").slice(0,60), assigned: w.assigned||"",
-      started_at: w.started_at, cavity_no: w.cavity_no
-    })),
+    inProgressWos: wos.filter(w => w.status === "DEVAM_EDİYOR" || w.status === "DEVAM_EDIYOR").slice(0, 20).map(w => {
+      const u = w.assigned ? (DB.users||[]).find(x=>x.id===w.assigned) : null;
+      return {
+        id: w.id, mold_id: w.mold_id, type: w.type, priority: w.priority,
+        description: (w.description||"").slice(0,60), assigned: u ? u.name : (w.assigned||""),
+        started_at: w.started_at, cavity_no: w.cavity_no
+      };
+    }),
     ts: new Date().toISOString()
   });
 });
@@ -253,6 +257,7 @@ app.post("/api/tv/claim", auth, (req, res) => {
   if (!DB.state || !DB.state.wos) return res.status(404).json({ error: "İş emri bulunamadı" });
   const wo = DB.state.wos.find(w => w.id === wo_id);
   if (!wo) return res.status(404).json({ error: "İş emri bulunamadı" });
+  if (!["leader","tech"].includes(req.user.role)) return res.status(403).json({ error: "Sadece lider ve teknisyenler iş üstlenebilir" });
   if (wo.assigned && wo.status !== "BEKLEMEDE") return res.status(400).json({ error: "Bu iş zaten atanmış" });
   wo.assigned = req.user.id;
   wo.status = "DEVAM_EDİYOR";

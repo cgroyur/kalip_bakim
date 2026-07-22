@@ -2,209 +2,188 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CMMS v15 — TV Modu</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>CMMS v15 — TV Dashboard</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a1628;color:#fff;overflow-x:hidden}
-.grid{display:grid;gap:12px;margin-bottom:20px}
+.top{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;flex-wrap:wrap;gap:8px}
+.grid{display:grid;gap:12px;padding:0 20px;margin-bottom:16px}
 .kpi-grid{grid-template-columns:repeat(4,1fr)}
-.two-col{grid-template-columns:1fr 1fr}
-.three-col{grid-template-columns:1fr 1fr 1fr}
-@media(max-width:900px){.kpi-grid,.two-col,.three-col{grid-template-columns:1fr}}
-.card{background:#111e33;border-radius:12px;padding:14px;overflow-y:auto}
-.kpi{background:#fff;border-radius:14px;padding:18px 14px;text-align:center}
-.kpi .ico{font-size:32px}
-.kpi .val{font-size:40px;font-weight:900;line-height:1;margin:4px 0}
-.kpi .lbl{font-size:11px;color:#6b7fa3;font-weight:600}
-.wo-row{padding:8px 10px;border-bottom:1px solid #1a3a6b;display:flex;justify-content:space-between;align-items:center;gap:8}
+.main-grid{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:1000px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.main-grid{grid-template-columns:1fr}}
+.card{background:#111e33;border-radius:12px;padding:14px;max-height:420px;overflow-y:auto}
+.kpi{background:#0d1a2e;border-radius:14px;padding:16px 12px;text-align:center;border:1px solid #1a3a6b}
+.kpi .ico{font-size:28px}.kpi .val{font-size:36px;font-weight:900;line-height:1;margin:4px 0}.kpi .lbl{font-size:10px;color:#7fa8d4;font-weight:600}
+.wo-row{padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;justify-content:space-between;align-items:center;gap:6px}
 .wo-row:nth-child(even){background:rgba(255,255,255,.02)}
-.btn-claim{background:#e65100;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap}
-.btn-claim:hover{background:#bf360c}
-.badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700;background:rgba(255,255,255,.1)}
-.p-KRİTİK{color:#ff5252}.p-YÜKSEK{color:#ff9800}.p-NORMAL{color:#64b5f6}.p-DÜŞÜK{color:#78909c}
-.modal-bg{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:9999}
-.modal{background:#fff;border-radius:16px;padding:28px 24px;width:100%;max-width:380;color:#0f2044}
-.modal input{width:100%;padding:10px 12px;border:2px solid #e8edf2;border-radius:8px;font-size:13px;box-sizing:border-box;margin-bottom:12px}
-.modal label{display:block;font-size:11px;font-weight:700;margin-bottom:4px}
-.modal .err{background:#ffebee;color:#c62828;padding:8px 12px;border-radius:6px;font-size:11px;margin-bottom:12px;font-weight:600}
-.notif{position:fixed;top:16px;right:16px;padding:14px 22px;border-radius:10px;font-size:14px;font-weight:700;z-index:99999;box-shadow:0 8px 32px rgba(0,0,0,.5);animation:slideIn .3s ease;cursor:pointer;max-width:420}
-.notif-danger{background:#c62828}.notif-success{background:#1a6b3c}
-@keyframes slideIn{from{transform:translateX(120px);opacity:0}to{transform:translateX(0);opacity:1}}
+.btn-claim{background:linear-gradient(135deg,#e65100,#bf360c);color:#fff;border:none;border-radius:8px;padding:7px 16px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;transition:transform .15s}
+.btn-claim:hover{transform:scale(1.05)}
+.badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700}
+.p-KRİTİK,.p-CRITICAL{color:#ff5252;background:rgba(255,82,82,.15)}.p-YÜKSEK,.p-HIGH{color:#ff9800;background:rgba(255,152,0,.15)}
+.p-NORMAL{color:#64b5f6;background:rgba(100,181,246,.15)}.p-DÜŞÜK,.p-LOW{color:#78909c;background:rgba(120,144,156,.15)}
 .progress-row{background:#0d1a2e;border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;border-left:3px solid #1565c0}
+.corner-btn{position:fixed;bottom:16px;right:16px;z-index:100;display:flex;gap:8px;align-items:center}
+.corner-btn button,.corner-btn a{background:rgba(255,255,255,.1);color:#7fa8d4;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:8px 14px;font-size:11px;font-weight:600;cursor:pointer;text-decoration:none;backdrop-filter:blur(8px);transition:all .2s}
+.corner-btn button:hover,.corner-btn a:hover{background:rgba(255,255,255,.2);color:#fff}
+/* Claim Modal */
+.overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(10,22,40,.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:9999}
+.claim-card{background:linear-gradient(145deg,#111e33,#0d1a2e);border:1px solid #1a3a6b;border-radius:20px;padding:32px 28px;width:100%;max-width:340px;box-shadow:0 24px 80px rgba(0,0,0,.6)}
+.claim-card h2{font-size:18px;font-weight:800;margin:0 0 4px;color:#fff}
+.claim-card .sub{font-size:11px;color:#4a6a8a;margin-bottom:20px}
+.claim-card label{display:block;font-size:10px;font-weight:700;color:#7fa8d4;margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px}
+.claim-card input{width:100%;padding:11px 14px;background:#0a1628;border:1.5px solid #1a3a6b;border-radius:10px;color:#fff;font-size:13px;outline:none;margin-bottom:14px;transition:border .2s}
+.claim-card input:focus{border-color:#1565c0}
+.claim-card input::placeholder{color:#2a4a6b}
+.claim-card .err{background:rgba(198,40,40,.2);border:1px solid #c62828;color:#ff8a80;padding:8px 12px;border-radius:8px;font-size:11px;margin-bottom:14px;font-weight:600}
+.claim-card .wo-info{background:rgba(255,255,255,.05);border-radius:10px;padding:10px 14px;margin-bottom:20px;border:1px solid rgba(255,255,255,.08)}
+.claim-card .wo-info .id{font-weight:800;font-size:14px;color:#64b5f6}.claim-card .wo-info .det{font-size:10px;color:#4a6a8a;margin-top:2px}
+.claim-btns{display:flex;gap:8px}
+.claim-btns button{flex:1;padding:12px;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s}
+.claim-btns .cancel{background:rgba(255,255,255,.08);color:#7fa8d4}.claim-btns .cancel:hover{background:rgba(255,255,255,.15)}
+.claim-btns .submit{background:linear-gradient(135deg,#e65100,#bf360c);color:#fff}.claim-btns .submit:hover{background:#e65100}
+.claim-btns .submit:disabled{opacity:.5;cursor:not-allowed}
+.notif{position:fixed;top:16px;right:16px;padding:14px 22px;border-radius:12px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 8px 32px rgba(0,0,0,.5);animation:slideIn .3s ease;cursor:pointer;max-width:400px;backdrop-filter:blur(8px)}
+.n-danger{background:rgba(198,40,40,.95);border:1px solid #ff5252}.n-success{background:rgba(26,107,60,.95);border:1px solid #4caf50}
+@keyframes slideIn{from{transform:translateX(120px);opacity:0}to{transform:translateX(0);opacity:1}}
+.empty{color:#2a4a6b;text-align:center;padding:30px;font-size:12px}
 </style>
 </head>
 <body>
 <div id="tv"></div>
 <script>
-var REFRESH = 12000;
-var prevTotal = 0;
-var notifTimer = null;
-
-function showNotif(text, type) {
-  var old = document.querySelector('.notif');
-  if(old) old.remove();
-  var n = document.createElement('div');
-  n.className = 'notif notif-' + (type||'danger');
-  n.textContent = text;
-  n.onclick = function(){ n.remove(); };
-  document.body.appendChild(n);
-  clearTimeout(notifTimer);
-  notifTimer = setTimeout(function(){ if(n.parentNode) n.remove(); }, 10000);
-  // Ses
-  try{var a=new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleVQlAMKc5dqeTkUbr6XU2pddQiKYr8/XnV5JKZOzytWcYE0slbbG0ZpiTy6Xt8LNmWJRMJa4v8qXYlMylri+x5ZiVDOWuL3GlWJUNJa4vcWUYlU0lri8xZNhVTWXuLzEkmFVNZe4u8ORYVU2l7i7w5BhVTeYuLrCj2BVN5i5ucKOYFU4mLm5wY5gVTiYubm/jWBVOZm5ub+NYFU5mbm4vo1gVTqZubm+jGBVOpm5uL2LYFU7mrm4vYtgVTuauLi9imBVPJq4uLyKYFU8m7i4u4lgVT2buLi7iWBVPZu4t7qIYFU+m7i3uohgVT6cuLe6h2BVP5y4t7mHYFU/nLi3uYZgVUCcuLe5hmBVQJy4trmFYFVBnbi2uIVgVUGduLa4hGBVQp24triEYFVCnbe2uINgVUOdt7W3g2BVQ524tbeDYFVDnbe1t4JgVUSdt7W2gmBVRJ24tbaCYFVFnra1toFgVQ==");a.volume=0.3;a.play();}catch(e){}
-  // Push bildirim
-  if("Notification" in window && Notification.permission==="granted"){
-    new Notification("CMMS — "+text,{icon:"/icon.svg"});
-  }
+var REFRESH=12000, prevTotal=0, notifTimer=null;
+// Türkçe karakter desteği — UTF-8
+function t(k){
+  var T={title:"CMMS v15 — Canlı Dashboard",open:"Açık İş Emri",crit:"Kritik İş",mttr:"MTTR",closed:"Bugün Kapatılan",
+    pool:"İş Havuzu",poolSub:"Üstlenmeye Açık",progress:"Devam Eden İşler",allOpen:"Tüm Açık İşler",
+    claim:"Üstlen",login:"Giriş Yap",loginSys:"Sisteme Gir",fullscreen:"Tam Ekran",small:"Küçült",
+    user:"Kullanıcı Adı",pass:"Şifre",cancel:"İptal",claimTitle:"İş Emri Üstlen",claimBtn:"Giriş Yap ve Üstlen",
+    loading:"Giriş yapılıyor...",noPool:"Havuzda iş yok 👍",noProgress:"Aktif çalışma yok",
+    assigned:"Atandı",waiting:"Havuzda",start:"Başlama",newWo:"yeni iş emri!",claimed:"işi üstlenildi!",
+    errCred:"Kullanıcı adı ve şifre girin",errConn:"Sunucuya bağlanılamadı",update:"sn güncelleme",by:"tarafından"};
+  return T[k]||k;
 }
 
-function fetchData() {
+function showNotif(text,type){
+  var old=document.querySelector('.notif');if(old)old.remove();
+  var n=document.createElement('div');n.className='notif n-'+(type||'danger');n.textContent=text;n.onclick=function(){n.remove();};
+  document.body.appendChild(n);clearTimeout(notifTimer);notifTimer=setTimeout(function(){if(n.parentNode)n.remove();},10000);
+  try{var a=new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleVQlAMKc5dqeTkUbr6XU2pddQiKYr8/XnV5JKZOzytWcYE0slbbG0ZpiTy6Xt8LNmWJRMJa4v8qXYlMylri+x5ZiVDOWuL3GlWJUNJa4vcWUYlU0lri8xZNhVTWXuLzEkmFVNQ==");a.volume=0.3;a.play();}catch(e){}
+  if("Notification" in window&&Notification.permission==="granted")new Notification("CMMS",{body:text,icon:"/icon.svg"});
+}
+
+function fetchData(){
   fetch("/api/tv").then(function(r){return r.json();}).then(function(d){
-    if(!d) return;
-    // Yeni iş bildirimi
-    if(prevTotal > 0 && d.totalWos > prevTotal) {
-      showNotif("🚨 "+(d.totalWos-prevTotal)+" yeni iş emri oluşturuldu!", "danger");
-    }
-    prevTotal = d.totalWos;
-    render(d);
+    if(!d)return;
+    if(prevTotal>0&&d.totalWos>prevTotal)showNotif("🚨 "+(d.totalWos-prevTotal)+" "+t("newWo"),"danger");
+    prevTotal=d.totalWos;render(d);
   }).catch(function(){});
 }
 
-function render(d) {
-  var now = new Date();
-  var html = '';
-
-  // Üst bar
-  html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;flex-wrap:wrap;gap:8px">';
-  html += '<div><h1 style="font-size:22px;font-weight:900;margin:0">🏭 CMMS v15 — Canlı Dashboard</h1>';
-  html += '<div style="font-size:11px;color:#7fa8d4;margin-top:3px">'+now.toLocaleDateString("tr-TR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})+" — "+now.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})+" · 12sn güncelleme</div></div>";
-  html += '<button onclick="toggleFS()" style="background:#1565c0;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer">⛶ Tam Ekran</button>';
-  html += '</div>';
-
+function render(d){
+  var now=new Date();
+  var h='';
+  // Top
+  h+='<div class="top"><div><h1 style="font-size:20px;font-weight:900">🏭 '+t("title")+'</h1>';
+  h+='<div style="font-size:10px;color:#4a6a8a;margin-top:2px">'+now.toLocaleDateString("tr-TR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})+" — "+now.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})+" · 12"+t("update")+"</div></div>";
+  h+='<button onclick="toggleFS()" style="background:#1565c0;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:11px;font-weight:700;cursor:pointer" id="fs-btn">⛶ '+t("fullscreen")+'</button></div>';
   // KPI
-  html += '<div class="grid kpi-grid" style="padding:0 20px">';
-  html += kpi("📋", d.open, "Açık İş Emri", d.open>10?"#e65100":"#1565c0");
-  html += kpi("🔴", d.critical, "Kritik İş", d.critical>0?"#c62828":"#1a6b3c");
-  html += kpi("⏱", d.mttr>0?d.mttr+" dk":"—", "MTTR", d.mttr>120?"#c62828":"#1a6b3c");
-  html += kpi("✅", d.closedToday, "Bugün Kapatılan", "#1a6b3c");
-  html += '</div>';
-
-  // Üç sütun: havuz + devam eden + açık işler
-  html += '<div class="grid three-col" style="padding:0 20px">';
-
-  // SOL: İş Havuzu
-  html += '<div class="card" style="max-height:420px;border:2px solid #e65100">';
-  html += '<h3 style="font-size:13px;font-weight:800;color:#ff9800;margin-bottom:10px">🔧 İş Havuzu — Üstlenmeye Açık ('+((d.poolWos||[]).length)+')</h3>';
-  if((d.poolWos||[]).length===0) html += '<div style="color:#4a6a8a;text-align:center;padding:30px;font-size:12px">Havuzda iş yok 👍</div>';
+  h+='<div class="grid kpi-grid">';
+  h+=kpi("📋",d.open,t("open"),d.open>10?"#e65100":"#64b5f6");
+  h+=kpi("🔴",d.critical,t("crit"),d.critical>0?"#ff5252":"#4caf50");
+  h+=kpi("⏱",d.mttr>0?d.mttr+" dk":"—",t("mttr"),d.mttr>120?"#ff5252":"#4caf50");
+  h+=kpi("✅",d.closedToday,t("closed"),"#4caf50");
+  h+='</div>';
+  // 3 sütun
+  h+='<div class="grid main-grid">';
+  // Pool
+  h+='<div class="card" style="border:1.5px solid #e65100"><h3 style="font-size:13px;font-weight:800;color:#ff9800;margin-bottom:10px">🔧 '+t("pool")+' — '+t("poolSub")+' ('+((d.poolWos||[]).length)+')</h3>';
+  if(!(d.poolWos||[]).length)h+='<div class="empty">'+t("noPool")+'</div>';
   (d.poolWos||[]).forEach(function(w){
-    html += '<div style="background:#0d1a2e;border-radius:8px;padding:10px 12px;margin-bottom:6px;border:1px solid #1a3a6b">';
-    html += '<div style="display:flex;justify-content:space-between;align-items:center">';
-    html += '<div><div style="font-weight:700;color:#fff;font-size:12px">'+w.id+'</div>';
-    html += '<div style="color:#78909c;font-size:10px;margin-top:2px">'+w.mold_id+' · '+w.type+'</div>';
-    html += '<div style="color:#4a6a8a;font-size:9px;margin-top:1px">'+w.description+'</div></div>';
-    html += '<div style="text-align:right"><span class="badge p-'+w.priority+'">'+w.priority+'</span><br>';
-    html += '<button class="btn-claim" onclick="openClaim(\''+w.id+'\',\''+w.mold_id+'\',\''+w.type+'\')">🤚 Üstlen</button></div>';
-    html += '</div></div>';
+    h+='<div style="background:#0d1a2e;border-radius:8px;padding:9px 11px;margin-bottom:5px;border:1px solid #1a3a6b;display:flex;justify-content:space-between;align-items:center">';
+    h+='<div><div style="font-weight:700;color:#fff;font-size:12px">'+w.id+'</div><div style="color:#4a6a8a;font-size:9px;margin-top:1px">'+w.mold_id+' · '+w.type+'</div>';
+    h+='<div style="color:#2a4a6b;font-size:8px;margin-top:1px">'+w.description+'</div></div>';
+    h+='<div style="text-align:right"><span class="badge p-'+w.priority+'">'+w.priority+'</span><br>';
+    h+='<button class="btn-claim" onclick="openClaim(\''+w.id+"','"+w.mold_id+"','"+w.type+"','"+(w.description||"").replace(/'/g,"")+"')\">🤚 "+t("claim")+'</button></div></div>';
   });
-  html += '</div>';
-
-  // ORTA: Devam Eden İşler
-  html += '<div class="card" style="max-height:420px;border:2px solid #1565c0">';
-  html += '<h3 style="font-size:13px;font-weight:800;color:#64b5f6;margin-bottom:10px">🔄 Devam Eden İşler ('+((d.inProgressWos||[]).length)+')</h3>';
-  if((d.inProgressWos||[]).length===0) html += '<div style="color:#4a6a8a;text-align:center;padding:30px;font-size:12px">Aktif çalışma yok</div>';
+  h+='</div>';
+  // Progress
+  h+='<div class="card" style="border:1.5px solid #1565c0"><h3 style="font-size:13px;font-weight:800;color:#64b5f6;margin-bottom:10px">🔄 '+t("progress")+' ('+((d.inProgressWos||[]).length)+')</h3>';
+  if(!(d.inProgressWos||[]).length)h+='<div class="empty">'+t("noProgress")+'</div>';
   (d.inProgressWos||[]).forEach(function(w){
-    html += '<div class="progress-row">';
-    html += '<div><div style="font-weight:700;color:#fff;font-size:12px">'+w.id+' <span style="color:#64b5f6;font-size:10px">→ '+(w.assigned||"?")+'</span></div>';
-    html += '<div style="color:#78909c;font-size:10px;margin-top:2px">'+w.mold_id+' · '+w.type+'</div>';
-    html += '<div style="color:#4a6a8a;font-size:9px;margin-top:1px">'+w.description+'</div></div>';
-    html += '<div style="text-align:right;font-size:9px;color:#4a6a8a">';
-    if(w.started_at) html += '<div>Başlama: '+(w.started_at||"").slice(0,16)+'</div>';
-    html += '<span class="badge p-'+w.priority+'">'+w.priority+'</span></div>';
-    html += '</div>';
+    h+='<div class="progress-row"><div><div style="font-weight:700;color:#fff;font-size:12px">'+w.id+' <span style="color:#64b5f6;font-size:10px">→ '+(w.assigned||"?")+'</span></div>';
+    h+='<div style="color:#4a6a8a;font-size:9px;margin-top:2px">'+w.mold_id+' · '+w.type+'</div>';
+    h+='<div style="color:#2a4a6b;font-size:8px;margin-top:1px">'+w.description+'</div></div>';
+    h+='<div style="text-align:right;font-size:8px;color:#2a4a6b">';
+    if(w.started_at)h+='<div>'+t("start")+': '+(w.started_at||"").slice(11,16)+'</div>';
+    h+='<span class="badge p-'+w.priority+'">'+w.priority+'</span></div></div>';
   });
-  html += '</div>';
-
-  // SAĞ: Tüm Açık İşler
-  html += '<div class="card" style="max-height:420px">';
-  html += '<h3 style="font-size:13px;font-weight:800;color:#fff;margin-bottom:10px">📋 Tüm Açık İşler ('+d.open+')</h3>';
-  (d.openWos||[]).forEach(function(w,i){
-    var pColor = w.priority==="KRİTİK"?"#ff5252":w.priority==="YÜKSEK"?"#ff9800":"#64b5f6";
-    html += '<div class="wo-row">';
-    html += '<div style="flex:1;min-width:0"><div style="display:flex;gap:6px;align-items:center">';
-    html += '<span style="font-weight:700;color:#fff;font-size:11px">'+w.id+'</span>';
-    html += '<span class="badge p-'+w.priority+'">'+w.priority+'</span></div>';
-    html += '<div style="color:#78909c;font-size:9px;margin-top:2px">'+w.mold_id+' · '+(w.description||"")+'</div></div>';
-    html += '<div style="font-size:9px;color:#4a6a8a;text-align:right">';
-    html += w.assigned?'<span style="color:#64b5f6">👤 '+w.assigned+'</span>':'<span style="color:#ff9800">⏳ Havuzda</span>';
-    html += '<div>'+(w.created_at||"").slice(0,16)+'</div></div>';
-    html += '</div>';
+  h+='</div>';
+  // All open
+  h+='<div class="card"><h3 style="font-size:13px;font-weight:800;color:#fff;margin-bottom:10px">📋 '+t("allOpen")+' ('+d.open+')</h3>';
+  (d.openWos||[]).forEach(function(w){
+    h+='<div class="wo-row"><div style="flex:1;min-width:0"><div style="display:flex;gap:5px;align-items:center">';
+    h+='<span style="font-weight:700;color:#fff;font-size:10px">'+w.id+'</span><span class="badge p-'+w.priority+'">'+w.priority+'</span></div>';
+    h+='<div style="color:#4a6a8a;font-size:8px;margin-top:1px">'+w.mold_id+' · '+(w.description||"")+'</div></div>';
+    h+='<div style="font-size:8px;text-align:right">'+(w.assigned?'<span style="color:#64b5f6">👤 '+w.assigned+'</span>':'<span style="color:#ff9800">⏳ '+t("waiting")+'</span>')+'</div></div>';
   });
-  html += '</div>';
-
-  html += '</div>';
-  document.getElementById("tv").innerHTML = html;
+  h+='</div></div>';
+  // Corner buttons
+  h+='<div class="corner-btn">';
+  
+  h+='<a href="/">🔐 '+t("loginSys")+'</a>';
+  h+='</div>';
+  document.getElementById("tv").innerHTML=h;
 }
 
-function kpi(ico, val, label, color) {
-  return '<div class="kpi"><div class="ico">'+ico+'</div><div class="val" style="color:'+(color||"#0f2044")+'">'+val+'</div><div class="lbl">'+label+'</div></div>';
+function kpi(ico,val,label,color){
+  return '<div class="kpi"><div class="ico">'+ico+'</div><div class="val" style="color:'+(color||"#64b5f6")+'">'+val+'</div><div class="lbl">'+label+'</div></div>';
 }
+function toggleFS(){if(!document.fullscreenElement)document.documentElement.requestFullscreen().catch(function(){});else document.exitFullscreen();}
 
-function toggleFS() {
-  if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(function(){});
-  else document.exitFullscreen();
-}
-
-// Üstlenme
-var claimWo = null;
-function openClaim(id, mold, type) {
-  claimWo = {id:id, mold:mold, type:type};
-  var m = document.createElement('div');
-  m.className = 'modal-bg';
-  m.id = 'claim-modal';
-  m.onclick = function(e){if(e.target===m)m.remove();};
-  m.innerHTML = '<div class="modal">'
-    +'<h2 style="font-size:16px;font-weight:800;margin:0 0 4px">🤚 İş Emri Üstlen</h2>'
-    +'<div style="font-size:11px;color:#6b7fa3;margin-bottom:16px">'+id+' — '+mold+' · '+type+'</div>'
-    +'<label>Kullanıcı Adı</label><input id="claim-user" autofocus>'
-    +'<label>Şifre</label><input id="claim-pass" type="password">'
-    +'<div id="claim-err"></div>'
-    +'<div style="display:flex;gap:8px">'
-    +'<button onclick="document.getElementById(\'claim-modal\').remove()" style="flex:1;padding:10px;background:#f5f7fb;color:#0f2044;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">İptal</button>'
-    +'<button onclick="doClaim()" id="claim-btn" style="flex:1;padding:10px;background:#e65100;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">Giriş Yap ve Üstlen</button>'
+var claimWo=null;
+function openClaim(id,mold,type,desc){
+  claimWo={id:id,mold:mold,type:type,desc:desc};
+  var m=document.createElement('div');m.className='overlay';m.id='claim-modal';
+  m.onclick=function(e){if(e.target===m)m.remove();};
+  m.innerHTML='<div class="claim-card">'
+    +'<h2>🤚 '+t("claimTitle")+'</h2>'
+    +'<div class="sub">'+t("claimTitle")+'</div>'
+    +'<div class="wo-info"><div class="id">'+id+'</div><div class="det">'+mold+' · '+type+'</div><div class="det">'+desc+'</div></div>'
+    +'<label>'+t("user")+'</label><input id="c-user" placeholder="'+t("user")+'" autofocus>'
+    +'<label>'+t("pass")+'</label><input id="c-pass" type="password" placeholder="'+t("pass")+'">'
+    +'<div id="c-err"></div>'
+    +'<div class="claim-btns">'
+    +'<button class="cancel" onclick="document.getElementById(\'claim-modal\').remove()">'+t("cancel")+'</button>'
+    +'<button class="submit" onclick="doClaim()" id="c-btn">'+t("claimBtn")+'</button>'
     +'</div></div>';
   document.body.appendChild(m);
-  document.getElementById('claim-pass').onkeydown = function(e){if(e.key==="Enter")doClaim();};
+  document.getElementById('c-pass').onkeydown=function(e){if(e.key==="Enter")doClaim();};
 }
 
-function doClaim() {
-  var user = document.getElementById('claim-user').value.trim();
-  var pass = document.getElementById('claim-pass').value;
-  var errEl = document.getElementById('claim-err');
-  var btn = document.getElementById('claim-btn');
-  if(!user||!pass){errEl.className='err';errEl.textContent='Kullanıcı adı ve şifre girin';return;}
-  btn.disabled=true; btn.textContent='⏳ Giriş yapılıyor...';
-  fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:user,password:pass})})
+function doClaim(){
+  var u=document.getElementById('c-user').value.trim(),p=document.getElementById('c-pass').value;
+  var err=document.getElementById('c-err'),btn=document.getElementById('c-btn');
+  if(!u||!p){err.className='err';err.textContent=t("errCred");return;}
+  btn.disabled=true;btn.textContent='⏳ '+t("loading");
+  fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:u,password:p})})
   .then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});})
   .then(function(lr){
-    if(!lr.ok){btn.disabled=false;btn.textContent='Giriş Yap ve Üstlen';errEl.className='err';errEl.textContent=lr.j.error||'Giriş başarısız';return;}
+    if(!lr.ok){btn.disabled=false;btn.textContent=t("claimBtn");err.className='err';err.textContent=lr.j.error||'Error';return;}
     return fetch("/api/tv/claim",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+lr.j.token},body:JSON.stringify({wo_id:claimWo.id})})
     .then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});})
     .then(function(cr){
-      if(!cr.ok){btn.disabled=false;btn.textContent='Giriş Yap ve Üstlen';errEl.className='err';errEl.textContent=cr.j.error||'Üstlenilemedi';return;}
+      if(!cr.ok){btn.disabled=false;btn.textContent=t("claimBtn");err.className='err';err.textContent=cr.j.error||'Error';return;}
       document.getElementById('claim-modal').remove();
-      showNotif("✅ "+claimWo.id+" işi "+lr.j.user.name+" tarafından üstlenildi!", "success");
+      showNotif("✅ "+claimWo.id+" "+lr.j.user.name+" "+t("by")+" "+t("claimed"),"success");
       fetchData();
     });
-  }).catch(function(){btn.disabled=false;btn.textContent='Giriş Yap ve Üstlen';errEl.className='err';errEl.textContent='Sunucuya bağlanılamadı';});
+  }).catch(function(){btn.disabled=false;btn.textContent=t("claimBtn");err.className='err';err.textContent=t("errConn");});
 }
 
-// Bildirim izni
-if("Notification" in window && Notification.permission==="default") Notification.requestPermission();
-
-// Başlat
-fetchData();
-setInterval(fetchData, REFRESH);
+if("Notification" in window&&Notification.permission==="default")Notification.requestPermission();
+fetchData();setInterval(fetchData,REFRESH);
 </script>
 </body>
 </html>
