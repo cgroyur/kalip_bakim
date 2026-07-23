@@ -682,6 +682,42 @@ function App() {
   }, []); // eslint-disable-line
 
   // State değişince API'ye kaydet (debounced persist)
+  // Kalıp konum → Transfer otomatik algılama
+  useEffect(function() {
+    var TRANSFER_LOCATIONS = ["hakan plastik","narplas"];
+    var changed = false;
+    var newMolds = (data.molds||[]).map(function(m) {
+      var loc = (m.location||"").toLowerCase().trim();
+      if (TRANSFER_LOCATIONS.some(function(t){ return loc.indexOf(t) >= 0; }) && m.status !== "Transfer" && m.status !== "Hurda") {
+        changed = true;
+        return Object.assign({}, m, { status: "Transfer", transfer_to: m.location });
+      }
+      return m;
+    });
+    if (changed && setData) {
+      setData(function(prev) { return Object.assign({}, prev, { molds: newMolds }); });
+    }
+  }, []);
+
+  // ── OTOMATİK VERİ YENİLEME (10sn) — tüm kullanıcılar güncel veri görsün ──
+  useEffect(function() {
+    if (!CMMS_TOKEN) return;
+    var refreshInterval = setInterval(function() {
+      apiGet("/api/state").then(function(state) {
+        if (state && state.wos) {
+          setData(function(prev) {
+            // Sadece wos ve molds güncelle (yoksa mevcut kalsın)
+            var newData = Object.assign({}, prev);
+            if (state.wos) newData.wos = state.wos;
+            if (state.molds) newData.molds = state.molds;
+            return newData;
+          });
+        }
+      });
+    }, 10000);
+    return function() { clearInterval(refreshInterval); };
+  }, []);
+
   // WO sayısı değişim bildirimi
   var _notifRef = useRef((data.wos||[]).length);
   useEffect(function () {
@@ -3712,7 +3748,6 @@ function AdminPanel(_ref19) {
     );
   }
   if (page === "create_wo") {
-    var _cw1 = useState(true), _cw2 = _slicedToArray(_cw1, 2), showCreateWO = _cw2[0], setShowCreateWO = _cw2[1];
     return React.createElement("div", { className: "anim" },
       React.createElement(ManualWOModal, {
         molds: data.molds, wos: data.wos, users: data.users,
@@ -3728,7 +3763,6 @@ function AdminPanel(_ref19) {
     );
   }
     if (page === "permissions") {
-    var _pm1=useState(null),_pm2=_slicedToArray(_pm1,2),permEdit=_pm2[0],setPermEdit=_pm2[1];
     var rolePerms = {
       leader: {label:"Lider",pages:["dash","inventory","jobs","matrix","molds","reports","critical","tvmode"],desc:{dash:"Dashboard",inventory:"Envanter Görünümü",jobs:"Arıza Havuzu",matrix:"Teknisyen Matrisi",molds:"Kalıplar",reports:"Raporlar",critical:"Kritik Analiz",tvmode:"TV Modu"}},
       tech: {label:"Teknisyen",pages:["my","techpool","waiting","done","tvmode"],desc:{my:"İşlerim",techpool:"Arıza Havuzu",waiting:"Beklemeye Alınan",done:"Tamamlananlar",tvmode:"TV Modu"}},
