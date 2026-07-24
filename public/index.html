@@ -201,39 +201,33 @@ var apiPost = async function(url, body) {
 // persist: API'ye kaydet + cache'i güncelle
 var _persistTimer = null;
 var _apiLoaded = false; // API'den veri yüklenene kadar persist engellenir
-var _lastData = null;
-var _lastPersistTime = 0;
+var _lastSavedJSON = "";
 var persist = function persist(d) {
-  _lastData = d;
+  if (!CMMS_TOKEN || !_apiLoaded) return;
   clearTimeout(_persistTimer);
-  // Minimum 1.5sn aralıkla kaydet — çok sık API çağrısı yapma
-  var now = Date.now();
-  var wait = Math.max(300, 1500 - (now - _lastPersistTime));
   _persistTimer = setTimeout(function() {
-    _lastPersistTime = Date.now();
-    _flushPersist();
-  }, wait);
+    var json = JSON.stringify(d);
+    // Değişiklik yoksa gönderme
+    if (json === _lastSavedJSON) return;
+    _lastSavedJSON = json;
+    // API'ye gönder
+    fetch("/api/state?token=" + CMMS_TOKEN, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: json
+    }).catch(function(){});
+  }, 500);
 };
-var _flushPersist = function() {
-  if (!_lastData || !CMMS_TOKEN || !_apiLoaded) return;
-  var d = _lastData;
-  _lastData = null;
-  clearTimeout(_persistTimer);
-  // navigator.sendBeacon — tarayıcı kapanırken bile çalışır, bloklama yapmaz
-  try {
-    var blob = new Blob([JSON.stringify(d)], {type: "application/json"});
-    navigator.sendBeacon("/api/state?token=" + CMMS_TOKEN, blob);
-  } catch(e) {}
-  try {
-    localStorage.setItem(LS + "_meta", JSON.stringify({
-      ts: Date.now(), moldCount: (d.molds||[]).length, woCount: (d.wos||[]).length
-    }));
-  } catch(e) {}
-};
-// Sayfa kapanırken bekleyen veriyi anında kaydet
+// Sayfa kapanırken son veriyi kaydet
 if (typeof window !== "undefined") {
-  window.addEventListener("beforeunload", function() { _flushPersist(); });
-  window.addEventListener("pagehide", function() { _flushPersist(); });
+  window.addEventListener("beforeunload", function() {
+    if (CMMS_TOKEN && _apiLoaded && _lastSavedJSON) {
+      try {
+        var blob = new Blob([_lastSavedJSON], {type: "application/json"});
+        navigator.sendBeacon("/api/state?token=" + CMMS_TOKEN, blob);
+      } catch(e) {}
+    }
+  });
 
   // ── 30 DK HAREKETSİZLİK ZAMANLAYICISI ──
   var IDLE_LIMIT = 30 * 60 * 1000; // 30 dakika
@@ -242,8 +236,7 @@ if (typeof window !== "undefined") {
     clearTimeout(_idleTimer);
     _idleTimer = setTimeout(function() {
       if (CMMS_TOKEN) {
-        _flushPersist();
-        CMMS_TOKEN = null;
+            CMMS_TOKEN = null;
         localStorage.removeItem("cmms_token");
         alert("30 dakika hareketsizlik nedeniyle oturumunuz sonlandırıldı.");
         window.location.href = "/tv";
@@ -764,7 +757,6 @@ function App() {
         return m.id === id ? fn(_objectSpread({}, m)) : m;
       });
     });
-    setTimeout(function(){ _lastPersistTime = 0; _flushPersist(); }, 100);
   }, [mut]);
   var setMolds = useCallback(function (list) {
     return mut(function (d) {
@@ -880,7 +872,7 @@ function App() {
         });
       }
       // State yüklendi — artık persist güvenli
-      setTimeout(function() { _apiLoaded = true; }, 1500);
+      setTimeout(function() { _apiLoaded = true; }, 800);
     }).catch(function() {
       _apiLoaded = true;
     });
