@@ -201,13 +201,18 @@ var apiPost = async function(url, body) {
 // persist: API'ye kaydet + cache'i güncelle
 var _persistTimer = null;
 var _apiLoaded = false; // API'den veri yüklenene kadar persist engellenir
-var _lastData = null; // Son kaydedilmemiş veri
+var _lastData = null;
+var _lastPersistTime = 0;
 var persist = function persist(d) {
   _lastData = d;
   clearTimeout(_persistTimer);
+  // Minimum 1.5sn aralıkla kaydet — çok sık API çağrısı yapma
+  var now = Date.now();
+  var wait = Math.max(300, 1500 - (now - _lastPersistTime));
   _persistTimer = setTimeout(function() {
+    _lastPersistTime = Date.now();
     _flushPersist();
-  }, 800);
+  }, wait);
 };
 var _flushPersist = function() {
   if (!_lastData || !CMMS_TOKEN || !_apiLoaded) return;
@@ -677,7 +682,8 @@ function App() {
           return Object.assign({}, prev, state);
         });
       }
-      _apiLoaded = true;
+      // 2sn bekle — setData sonrası gereksiz persist'i önle
+      setTimeout(function() { _apiLoaded = true; }, 2000);
     }).catch(function() { _apiLoaded = true; });
   }, []); // eslint-disable-line
 
@@ -697,25 +703,6 @@ function App() {
     if (changed && setData) {
       setData(function(prev) { return Object.assign({}, prev, { molds: newMolds }); });
     }
-  }, []);
-
-  // ── OTOMATİK VERİ YENİLEME (10sn) — tüm kullanıcılar güncel veri görsün ──
-  useEffect(function() {
-    if (!CMMS_TOKEN) return;
-    var refreshInterval = setInterval(function() {
-      apiGet("/api/state").then(function(state) {
-        if (state && state.wos) {
-          setData(function(prev) {
-            // Sadece wos ve molds güncelle (yoksa mevcut kalsın)
-            var newData = Object.assign({}, prev);
-            if (state.wos) newData.wos = state.wos;
-            if (state.molds) newData.molds = state.molds;
-            return newData;
-          });
-        }
-      });
-    }, 10000);
-    return function() { clearInterval(refreshInterval); };
   }, []);
 
   // WO sayısı değişim bildirimi
@@ -767,11 +754,12 @@ function App() {
     });
   }, [mut]);
   var updWO = useCallback(function (id, fn) {
-    return mut(function (d) {
+    mut(function (d) {
       d.wos = d.wos.map(function (w) {
         return w.id === id ? fn(_objectSpread({}, w)) : w;
       });
     });
+    setTimeout(function(){ _lastPersistTime = 0; _flushPersist(); }, 100);
   }, [mut]);
   var addMold = useCallback(function (m) {
     return mut(function (d) {
@@ -779,11 +767,12 @@ function App() {
     });
   }, [mut]);
   var updMold = useCallback(function (id, fn) {
-    return mut(function (d) {
+    mut(function (d) {
       d.molds = d.molds.map(function (m) {
         return m.id === id ? fn(_objectSpread({}, m)) : m;
       });
     });
+    setTimeout(function(){ _lastPersistTime = 0; _flushPersist(); }, 100);
   }, [mut]);
   var setMolds = useCallback(function (list) {
     return mut(function (d) {
@@ -3908,15 +3897,7 @@ function LeaderPanel(_ref24) {
   var techsOnly = users.filter(function (u) {
     return u.role === "tech";
   });
-  // Sayfa değiştiğinde API'den güncel veriyi çek
-  useEffect(function() {
-    if (!CMMS_TOKEN) return;
-    apiGet("/api/state").then(function(state) {
-      if (state && state.wos && setData) {
-        setData(function(prev) { return Object.assign({}, prev, { wos: state.wos }); });
-      }
-    });
-  }, [page]);
+
   var unassigned = wos.filter(function (w) {
     return w.status === "BEKLEMEDE" && !w.assigned;
   }).sort(function (a, b) {
