@@ -122,10 +122,41 @@ app.post("/api/state", (req, res, next) => {
   }
   auth(req, res, next);
 }, (req, res) => {
-  const { users, auditLog, ...rest } = req.body;
+  const { users, auditLog, deleted_wo_ids, ...rest } = req.body;
+  
+  // ── WO MERGE: başkalarının eklediği/değiştirdiği işleri koru ──
+  const serverWos = (DB.state && DB.state.wos) ? DB.state.wos : [];
+  const clientWos = rest.wos || [];
+  const deletedIds = new Set(deleted_wo_ids || []);
+  
+  const clientMap = new Map(clientWos.map(w => [w.id, w]));
+  const merged = [];
+  const seen = new Set();
+  
+  // 1. Sunucudaki her WO: istemcide varsa istemci versiyonu (daha güncel olabilir),
+  //    istemcide yoksa ve silinmemişse KORU (başkası eklemiş olabilir)
+  for (const sw of serverWos) {
+    if (deletedIds.has(sw.id)) continue; // istemci bilinçli silmiş
+    if (clientMap.has(sw.id)) {
+      // Çakışma: daha YENİ değişiklik kazanır (updated_at)
+      const cw = clientMap.get(sw.id);
+      const sTime = new Date(sw.updated_at || sw.created_at || 0).getTime();
+      const cTime = new Date(cw.updated_at || cw.created_at || 0).getTime();
+      merged.push(cTime >= sTime ? cw : sw);
+    } else {
+      merged.push(sw); // istemci görmemiş — koru!
+    }
+    seen.add(sw.id);
+  }
+  // 2. İstemcide olup sunucuda olmayan yeni WO'lar
+  for (const cw of clientWos) {
+    if (!seen.has(cw.id) && !deletedIds.has(cw.id)) merged.push(cw);
+  }
+  
+  rest.wos = merged;
   DB.state = rest;
   saveDB();
-  res.json({ ok: true });
+  res.json({ ok: true, woCount: merged.length });
 });
 
 // ── KULLANICILAR ──
@@ -302,6 +333,7 @@ app.post("/api/tv/claim", auth, (req, res) => {
   wo.assigned = req.user.id;
   wo.status = "DEVAM_EDİYOR";
   wo.started_at = new Date().toISOString().replace("T"," ").slice(0,19);
+  wo.updated_at = new Date().toISOString();
   addAudit(req.user.id, req.user.name, req.user.role, "İş Üstlenildi (TV)", "wo", wo_id,
     req.user.name + " " + wo_id + " iş emrini TV modundan üstlendi");
   saveDB();

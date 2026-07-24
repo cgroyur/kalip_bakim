@@ -202,29 +202,34 @@ var apiPost = async function(url, body) {
 var _persistTimer = null;
 var _apiLoaded = false; // API'den veri yüklenene kadar persist engellenir
 var _lastSavedJSON = "";
+var _pendingData = null;
+var _deletedWoIds = []; // Bilinçli silinen WO'lar (merge için)
 var persist = function persist(d) {
   if (!CMMS_TOKEN || !_apiLoaded) return;
+  _pendingData = d;
   clearTimeout(_persistTimer);
   _persistTimer = setTimeout(function() {
-    var json = JSON.stringify(d);
-    // Değişiklik yoksa gönderme
+    var payload = Object.assign({}, _pendingData, { deleted_wo_ids: _deletedWoIds });
+    _pendingData = null;
+    var json = JSON.stringify(payload);
     if (json === _lastSavedJSON) return;
     _lastSavedJSON = json;
-    // API'ye gönder
     fetch("/api/state?token=" + CMMS_TOKEN, {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: json
-    }).catch(function(){});
+    }).then(function(){ _deletedWoIds = []; }).catch(function(){});
   }, 500);
 };
 // Sayfa kapanırken son veriyi kaydet
 if (typeof window !== "undefined") {
   window.addEventListener("beforeunload", function() {
-    if (CMMS_TOKEN && _apiLoaded && _lastSavedJSON) {
+    if (CMMS_TOKEN && _apiLoaded && _pendingData) {
       try {
-        var blob = new Blob([_lastSavedJSON], {type: "application/json"});
+        var payload = Object.assign({}, _pendingData, { deleted_wo_ids: _deletedWoIds });
+        var blob = new Blob([JSON.stringify(payload)], {type: "application/json"});
         navigator.sendBeacon("/api/state?token=" + CMMS_TOKEN, blob);
+        _pendingData = null;
       } catch(e) {}
     }
   });
@@ -741,10 +746,12 @@ function App() {
   var updWO = useCallback(function (id, fn) {
     mut(function (d) {
       d.wos = d.wos.map(function (w) {
-        return w.id === id ? fn(_objectSpread({}, w)) : w;
+        if (w.id !== id) return w;
+        var updated = fn(_objectSpread({}, w));
+        updated.updated_at = new Date().toISOString(); // Çakışma çözümü için
+        return updated;
       });
     });
-    setTimeout(function(){ _lastPersistTime = 0; _flushPersist(); }, 100);
   }, [mut]);
   var addMold = useCallback(function (m) {
     return mut(function (d) {
@@ -771,6 +778,7 @@ function App() {
     });
   }, [mut]);
   var deleteWO = useCallback(function (id) {
+    _deletedWoIds.push(id); // Merge'de korunmasın — bilinçli silme
     return mut(function (d) {
       d.wos = d.wos.filter(function (w) {
         return w.id !== id;
@@ -1078,7 +1086,6 @@ function LoginScreen(_ref) {
       } else {
         // İlk kullanım — demo veriyi sunucuya hemen kaydet
         _apiLoaded = true;
-        setTimeout(function(){ _flushPersist(); }, 500);
       }
       setLoading(false);
       onLogin(result.user);
@@ -2816,6 +2823,7 @@ function RCATab(_ref14) {
 function AdminPanel(_ref19) {
   var data = _ref19.data,
     page = _ref19.page,
+    setPage = _ref19.setPage,
     addMold = _ref19.addMold,
     updMold = _ref19.updMold,
     setMolds = _ref19.setMolds,
