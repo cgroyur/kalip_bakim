@@ -5069,7 +5069,7 @@ function OperatorPanel(_ref26) {
       cavity_no: f.cavity_no,
       active_reference: f.active_reference || "",
       reported_by: user ? user.id : "op",
-      machine: selMold ? (selMold.location || selMold.machines || "") : "",
+      machine: _selM ? (_selM.location || _selM.machines || "") : "",
       notes: f.initial_assessment || ""
     };
     // DOĞRUDAN API'YE GÖNDER — persist zincirine bağımlı değil
