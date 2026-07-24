@@ -1161,11 +1161,17 @@ function Sidebar(_ref2) {
     }, {
       id: "jobs",
       ico: "📋",
-      l: "İş Emirleri"
+      l: "İş Emirleri",
+      b: wos.filter(function (w) {
+        return w.status !== "KAPATILDI";
+      }).length || null
     }, {
       id: "pool",
       ico: "📥",
-      l: "Arıza Havuzu"
+      l: "Arıza Havuzu",
+      b: wos.filter(function (w) {
+        return w.status === "BEKLEMEDE" && !w.assigned;
+      }).length || null
     }, {
       id: "create_wo",
       ico: "➕",
@@ -1260,11 +1266,17 @@ function Sidebar(_ref2) {
     }, {
       id: "techpool",
       ico: "📥",
-      l: "Arıza Havuzu"
+      l: "Arıza Havuzu",
+      b: wos.filter(function (w) {
+        return w.status === "BEKLEMEDE" && !w.assigned;
+      }).length || null
     }, {
       id: "waiting",
       ico: "⏸",
-      l: "Beklemeye Alınan"
+      l: "Beklemeye Alınan",
+      b: wos.filter(function (w) {
+        return w.status === "BEKLEMEYE_ALINDI" && w.assigned === user.id;
+      }).length || null
     }, {
       id: "done",
       ico: "✅",
@@ -3756,11 +3768,10 @@ function AdminPanel(_ref19) {
           try { addAuditLog && addAuditLog({ user_id: user && user.id || "admin", user_name: user && user.name || "Admin",
             role: "admin", action: "İş Emri Açıldı", entity_type: "wo", entity_id: wo.id,
             detail: (wo.mold_id || "") + " — " + (wo.type || "") + ": " + (wo.description || "").substring(0, 60) }); } catch(e) {}
-          // Oluşturduktan sonra sayfayı kapat
-          alert("✅ İş emri oluşturuldu: " + wo.id);
-          setPage("jobs");
+          // Oluşturduktan sonra sayfayı kapat (render dışında)
+          setTimeout(function() { setPage("jobs"); }, 50);
         },
-        onClose: function() { setPage("jobs"); }
+        onClose: function() { setTimeout(function() { setPage("jobs"); }, 10); }
       })
     );
   }
