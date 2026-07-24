@@ -674,18 +674,10 @@ function App() {
     toast = _useState0[0],
     setToast = _useState0[1];
   // API'den state yükle — ilk mount
+  // Mount'ta _apiLoaded false tut — useEffect[user] yükleyecek
   useEffect(function() {
-    if (!CMMS_TOKEN) { _apiLoaded = true; return; }
-    apiGet("/api/state").then(function(state) {
-      if (state && state.molds) {
-        setData(function(prev) {
-          return Object.assign({}, prev, state);
-        });
-      }
-      // 2sn bekle — setData sonrası gereksiz persist'i önle
-      setTimeout(function() { _apiLoaded = true; }, 2000);
-    }).catch(function() { _apiLoaded = true; });
-  }, []); // eslint-disable-line
+    if (!CMMS_TOKEN) { _apiLoaded = false; }
+  }, []);
 
   // State değişince API'ye kaydet (debounced persist)
   // Kalıp konum → Transfer otomatik algılama
@@ -874,6 +866,24 @@ function App() {
         window.history.replaceState({}, "", window.location.pathname);
       }
     }
+  }, [user]);
+
+  // ── LOGIN SONRASI STATE YÜKLEME ──
+  // user set edildiğinde sunucudan güncel state çek
+  useEffect(function() {
+    if (!user || !CMMS_TOKEN) return;
+    _apiLoaded = false; // persist'i engelle
+    apiGet("/api/state").then(function(state) {
+      if (state && state.molds) {
+        setData(function(prev) {
+          return Object.assign({}, prev, state);
+        });
+      }
+      // State yüklendi — artık persist güvenli
+      setTimeout(function() { _apiLoaded = true; }, 1500);
+    }).catch(function() {
+      _apiLoaded = true;
+    });
   }, [user]);
 
   // Otomatik oturum: token geçerliyse login ekranını atla
