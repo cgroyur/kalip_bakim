@@ -5060,54 +5060,34 @@ function OperatorPanel(_ref26) {
       return;
     }
     var ts = nowStr();
-    addWO({
-      id: function () {
-        var nums = (wos || []).map(function (w) {
-          if (!w.id) return 0;
-          var p = w.id.split("-");
-          var n = parseInt(p[p.length - 1]);
-          return isNaN(n) ? 0 : n;
-        }).filter(function (n) {
-          return n > 0;
-        });
-        var next = (nums.length > 0 ? Math.max.apply(Math, _toConsumableArray(nums)) : 0) + 1;
-        return "LG-" + String(next).padStart(3, "0");
-      }(),
+    var _newWO = {
       mold_id: f.mold_id,
       type: "ARIZ",
-      fail_code: f.fail_code,
+      fail_cat: f.fail_cat || "",
       description: f.description,
-      status: "BEKLEMEDE",
-      priority: f.priority,
-      assigned: null,
-      reported_by: "op",
-      machine: f.machine || "?",
-      production_impact: f.impact,
+      priority: f.priority || "NORMAL",
       cavity_no: f.cavity_no,
-      active_reference: f.active_reference || function () {
-        var sm = molds.find(function (m) {
-          return m.id === f.mold_id;
-        });
-        return sm !== null && sm !== void 0 && sm.references && sm.references.length > 0 ? sm.references[0].ref_code : "";
-      }(),
-      initial_assessment: f.initial_assessment,
-      assessment_at: f.initial_assessment ? ts : null,
-      checklist_done: [],
-      parts_used: [],
-      cost_labor: 0,
-      cost_parts: 0,
-      created_at: ts,
-      started_at: null,
-      closed_at: null,
-      notes: "",
-      actions: [{
-        ts: ts,
-        user: "op",
-        act: "Bildirildi",
-        det: f.description + (f.cavity_no && f.cavity_no !== "İLGİSİZ" ? " [Göz: " + (f.cavity_no === "TÜM" ? "Tüm kalıp" : f.cavity_no) + "]" : "") + (f.active_reference ? " [Ref: " + f.active_reference + "]" : "") + (f.initial_assessment ? "\n🔍 " + f.initial_assessment : "")
-      }]
+      active_reference: f.active_reference || "",
+      reported_by: user ? user.id : "op",
+      machine: selMold ? (selMold.location || selMold.machines || "") : "",
+      notes: f.initial_assessment || ""
+    };
+    // DOĞRUDAN API'YE GÖNDER — persist zincirine bağımlı değil
+    fetch("/api/workorders", {
+      method: "POST",
+      headers: {"Content-Type": "application/json", "Authorization": "Bearer " + CMMS_TOKEN},
+      body: JSON.stringify(_newWO)
+    }).then(function(r) { return r.json(); }).then(function(result) {
+      if (result.ok && result.wo) {
+        // Yerel state'e de ekle (anlık görünsün)
+        addWO(result.wo);
+        alert("✅ Arıza bildirimi gönderildi!\nİş Emri: " + result.wo.id);
+      } else {
+        alert("❌ Sunucu hatası: " + (result.error || "Bildirim gönderilemedi"));
+      }
+    }).catch(function() {
+      alert("❌ Sunucuya ulaşılamadı — internet bağlantısını kontrol edin");
     });
-    alert("✅ Bildirim kalıp atölyesine gönderildi!");
     setShowForm(false);
     setF({
       mold_id: "",

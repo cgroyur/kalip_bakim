@@ -255,6 +255,41 @@ app.get("/api/tv", (req, res) => {
   });
 });
 
+// POST /api/workorders — Doğrudan iş emri oluştur (arıza bildirimi)
+app.post("/api/workorders", auth, (req, res) => {
+  const wo = req.body;
+  if (!wo || !wo.mold_id || !wo.type) return res.status(400).json({ error: "Kalıp ve tip zorunlu" });
+  
+  // ID ata
+  if (!wo.id) {
+    const existing = (DB.state && DB.state.wos) ? DB.state.wos : [];
+    const maxNum = existing.reduce((max, w) => {
+      const m = (w.id||"").match(/LG-(\d+)/);
+      return m ? Math.max(max, parseInt(m[1])) : max;
+    }, 0);
+    wo.id = "LG-" + String(maxNum + 1).padStart(3, "0");
+  }
+  
+  // Varsayılan alanlar
+  wo.status = wo.status || "BEKLEMEDE";
+  wo.assigned = wo.assigned || null;
+  wo.created_at = wo.created_at || new Date().toISOString().replace("T"," ").slice(0,19);
+  wo.reported_by = wo.reported_by || req.user.id;
+  
+  // State'e ekle
+  if (!DB.state) DB.state = { molds: [], wos: [] };
+  if (!DB.state.wos) DB.state.wos = [];
+  DB.state.wos.push(wo);
+  
+  // Audit log
+  addAudit(req.user.id, req.user.name, req.user.role, "Arıza Bildirimi", "wo", wo.id,
+    `${wo.mold_id} — ${wo.type}: ${(wo.description||"").slice(0,60)}`);
+  
+  saveDB();
+  console.log(`📋 Yeni WO: ${wo.id} (${wo.mold_id}) by ${req.user.name}`);
+  res.json({ ok: true, wo: wo });
+});
+
 // POST /api/tv/claim — İş emri üstlenme (login gerekli)
 app.post("/api/tv/claim", auth, (req, res) => {
   const { wo_id } = req.body;
