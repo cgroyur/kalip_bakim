@@ -12,28 +12,74 @@ const JWT_SECRET = process.env.JWT_SECRET || "cmms-v15-change-me-in-production";
 
 const DATA_DIR  = process.env.DB_DIR || path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "cmms_data.json");
+const PG_URL    = process.env.DATABASE_URL || null;
 
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+if (!fs.existsSync(DATA_DIR)) { try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch(e) {} }
 
-// ── Bellek içi DB (JSON dosyasına persist edilir) ──
+// ── Bellek içi DB ──
+// Kalıcılık: DATABASE_URL varsa PostgreSQL (Neon — ücretsiz, kalıcı),
+//            yoksa JSON dosyası (lokal geliştirme)
 let DB = { users: [], state: null, auditLog: [] };
+let pgPool = null;
 
-function loadDB() {
+if (PG_URL) {
+  const { Pool } = require("pg");
+  pgPool = new Pool({
+    connectionString: PG_URL,
+    ssl: { rejectUnauthorized: false },
+    max: 3
+  });
+  console.log("🐘 PostgreSQL modu aktif (kalıcı depolama)");
+}
+
+async function loadDB() {
+  if (pgPool) {
+    try {
+      await pgPool.query(
+        "CREATE TABLE IF NOT EXISTS cmms_store (id INT PRIMARY KEY DEFAULT 1, data JSONB NOT NULL, updated_at TIMESTAMPTZ DEFAULT now())"
+      );
+      const r = await pgPool.query("SELECT data FROM cmms_store WHERE id = 1");
+      if (r.rows.length > 0 && r.rows[0].data) {
+        DB = r.rows[0].data;
+        const woCount = (DB.state && DB.state.wos) ? DB.state.wos.length : 0;
+        console.log(`✅ Veri PostgreSQL'den yüklendi (${woCount} iş emri)`);
+        return;
+      }
+      console.log("ℹ PostgreSQL boş — ilk kurulum");
+      return;
+    } catch(e) {
+      console.error("❌ PostgreSQL hatası:", e.message, "— dosya moduna düşülüyor");
+      pgPool = null;
+    }
+  }
   try {
     if (fs.existsSync(DATA_FILE)) {
       DB = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
-      console.log(`✅ Veri yüklendi (${Math.round(fs.statSync(DATA_FILE).size/1024)} KB)`);
+      console.log(`✅ Veri dosyadan yüklendi (${Math.round(fs.statSync(DATA_FILE).size/1024)} KB)`);
     }
   } catch(e) { console.warn("Veri yüklenemedi:", e.message); }
 }
 
 let _saveTimer = null;
+let _saving = false;
 function saveDB() {
   clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(() => {
-    try { fs.writeFileSync(DATA_FILE, JSON.stringify(DB), "utf8"); }
-    catch(e) { console.warn("Kaydetme hatası:", e.message); }
-  }, 1000);
+  _saveTimer = setTimeout(async () => {
+    if (pgPool) {
+      if (_saving) { saveDB(); return; }
+      _saving = true;
+      try {
+        await pgPool.query(
+          "INSERT INTO cmms_store (id, data, updated_at) VALUES (1, $1, now()) ON CONFLICT (id) DO UPDATE SET data = $1, updated_at = now()",
+          [JSON.stringify(DB)]
+        );
+      } catch(e) { console.warn("PG kaydetme hatası:", e.message); }
+      _saving = false;
+    } else {
+      try { fs.writeFileSync(DATA_FILE, JSON.stringify(DB), "utf8"); }
+      catch(e) { console.warn("Kaydetme hatası:", e.message); }
+    }
+  }, 800);
 }
 
 function addAudit(userId, userName, role, action, entityType, entityId, detail) {
@@ -47,9 +93,14 @@ function addAudit(userId, userName, role, action, entityType, entityId, detail) 
   saveDB();
 }
 
-// İlk yükleme
-loadDB();
+// İlk yükleme — async başlangıç
+async function initServer() {
+  await loadDB();
+  ensureDemoUsers();
+  startListen();
+}
 
+function ensureDemoUsers() {
 // Demo kullanıcılar yoksa oluştur
 if (!DB.users || DB.users.length === 0) {
   DB.users = [
@@ -65,6 +116,8 @@ if (!DB.users || DB.users.length === 0) {
   saveDB();
   console.log("✅ Demo kullanıcılar oluşturuldu  →  admin / admin123");
 }
+}
+
 
 // ── MIDDLEWARE ──
 // app.use(compression()); // Büyük HTML ile sorun yaratabiliyor
@@ -377,7 +430,11 @@ app.use(express.static(path.join(__dirname,"public"), {
 }));
 app.get("*", (req,res) => res.sendFile(path.join(__dirname,"public","index.html")));
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`CMMS v15 → http://0.0.0.0:${PORT}`);
-  console.log(`Veri     → ${DATA_FILE}`);
-});
+function startListen() {
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`CMMS v15 → http://0.0.0.0:${PORT}`);
+    console.log(`Depolama → ${pgPool ? "PostgreSQL (kalıcı)" : DATA_FILE}`);
+  });
+}
+
+initServer();
