@@ -3748,6 +3748,9 @@ function AdminPanel(_ref19) {
           try { addAuditLog && addAuditLog({ user_id: user && user.id || "admin", user_name: user && user.name || "Admin",
             role: "admin", action: "İş Emri Açıldı", entity_type: "wo", entity_id: wo.id,
             detail: (wo.mold_id || "") + " — " + (wo.type || "") + ": " + (wo.description || "").substring(0, 60) }); } catch(e) {}
+          // Oluşturduktan sonra sayfayı kapat
+          alert("✅ İş emri oluşturuldu: " + wo.id);
+          setPage("jobs");
         },
         onClose: function() { setPage("jobs"); }
       })
@@ -4989,7 +4992,8 @@ function OperatorPanel(_ref26) {
   var data = _ref26.data,
     page = _ref26.page,
     addWO = _ref26.addWO,
-    openMold = _ref26.openMold;
+    openMold = _ref26.openMold,
+    user = _ref26.user;
   var molds = data.molds,
     wos = data.wos;
   var _useState71 = useState(false),
@@ -5045,6 +5049,7 @@ function OperatorPanel(_ref26) {
     }).slice(0, 6) : []);
   };
   var submit = function submit() {
+    try {
     if (!f.mold_id || !f.description) {
       alert("Kalıp ve açıklama zorunlu!");
       return;
@@ -5063,7 +5068,7 @@ function OperatorPanel(_ref26) {
     var _newWO = {
       mold_id: f.mold_id,
       type: "ARIZ",
-      fail_cat: f.fail_cat || "",
+      fail_cat: f.fail_code || "DIGER",
       description: f.description,
       priority: f.priority || "NORMAL",
       cavity_no: f.cavity_no,
@@ -5101,6 +5106,10 @@ function OperatorPanel(_ref26) {
       cavity_no: ""
     });
     setSugg([]);
+    } catch(err) {
+      alert("❌ Hata: " + err.message);
+      console.error("Submit hatası:", err);
+    }
   };
   if (page === "report") {
     var _molds$find, _molds$find2;
