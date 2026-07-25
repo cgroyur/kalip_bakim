@@ -697,27 +697,52 @@ function App() {
 
   // WO sayısı değişim bildirimi
   var _notifRef = useRef((data.wos||[]).length);
+  var _notifIdsRef = useRef((data.wos||[]).map(function(w){return w.id;}));
   useEffect(function () {
     persist(data);
-    var currentCount = (data.wos||[]).length;
-    if (_notifRef.current > 0 && currentCount > _notifRef.current) {
-      var diff = currentCount - _notifRef.current;
-      // Pop-up göster
-      var n = document.createElement("div");
-      n.style.cssText = "position:fixed;top:16px;right:16px;background:#c62828;color:#fff;padding:14px 22px;border-radius:10px;font-size:14px;font-weight:700;z-index:99999;box-shadow:0 8px 32px rgba(0,0,0,.4);animation:slideIn .3s ease;cursor:pointer;max-width:400px";
-      n.textContent = "🚨 " + diff + " yeni iş emri oluşturuldu!";
-      n.onclick = function(){ n.remove(); };
-      document.body.appendChild(n);
-      setTimeout(function(){ if(n.parentNode) n.remove(); }, 8000);
-      // Ses
-      try{var a=new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleVQlAMKc5dqeTkUbr6XU2pddQiKYr8/XnV5JKZOzytWcYE0slbbG0ZpiTy6Xt8LNmWJRMJa4v8qXYlMylri+x5ZiVDOWuL3GlWJUNJa4vcWUYlU0lri8xZNhVTWXuLzEkmFVNQ==");a.volume=0.3;a.play();}catch(e){}
-      // Push bildirim
-      if("Notification" in window && Notification.permission==="granted"){
-        new Notification("CMMS — Yeni İş Emri",{body:diff+" yeni iş emri!",icon:"/icon.svg"});
+    var currentWos = data.wos || [];
+    var currentIds = currentWos.map(function(w){return w.id;});
+    // Yeni eklenen WO'ları bul (id bazlı — daha güvenilir)
+    var newWos = currentWos.filter(function(w){ return _notifIdsRef.current.indexOf(w.id) < 0; });
+    // İlk yükleme değilse ve yeni iş varsa bildir
+    if (_notifIdsRef.current.length > 0 && newWos.length > 0) {
+      // Role göre filtrele: operatör kendi bildirdiğini görmesin
+      var relevant = newWos;
+      if (user && user.role === "op") relevant = [];
+      if (relevant.length > 0) {
+        var critCount = relevant.filter(function(w){return w.priority==="KRİTİK";}).length;
+        var isCrit = critCount > 0;
+        // Pop-up göster
+        var n = document.createElement("div");
+        n.style.cssText = "position:fixed;top:16px;right:16px;background:" + (isCrit?"#c62828":"#1565c0") + ";color:#fff;padding:16px 24px;border-radius:12px;font-size:14px;font-weight:700;z-index:99999;box-shadow:0 8px 32px rgba(0,0,0,.4);animation:slideIn .3s ease;cursor:pointer;max-width:400px";
+        var firstWo = relevant[0];
+        n.innerHTML = (isCrit?"🚨 KRİTİK ARIZA!":"🔔 Yeni İş Emri") + "<br><span style=\"font-size:12px;font-weight:400;opacity:.9\">" + firstWo.id + " — " + (firstWo.mold_id||"") + (relevant.length>1?" (+"+(relevant.length-1)+" iş daha)":"") + "</span>";
+        n.onclick = function(){ n.remove(); setPage(user.role==="tech"?"techpool":user.role==="leader"?"jobs":"pool"); };
+        document.body.appendChild(n);
+        setTimeout(function(){ if(n.parentNode) n.remove(); }, 10000);
+        // Ses — kritikse daha belirgin
+        try{var a=new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleVQlAMKc5dqeTkUbr6XU2pddQiKYr8/XnV5JKZOzytWcYE0slbbG0ZpiTy6Xt8LNmWJRMJa4v8qXYlMylri+x5ZiVDOWuL3GlWJUNJa4vcWUYlU0lri8xZNhVTWXuLzEkmFVNQ==");a.volume=isCrit?0.5:0.3;a.play();}catch(e){}
+        // Tarayıcı dışı push bildirim
+        if("Notification" in window && Notification.permission==="granted"){
+          new Notification(isCrit?"🚨 CMMS — KRİTİK ARIZA":"CMMS — Yeni İş Emri",{
+            body: firstWo.id + " · " + (firstWo.mold_id||"") + " · " + (firstWo.description||"").slice(0,50),
+            icon:"/icon.svg", tag:"cmms-wo", requireInteraction: isCrit
+          });
+        }
       }
     }
-    _notifRef.current = currentCount;
+    _notifIdsRef.current = currentIds;
+    _notifRef.current = currentWos.length;
   }, [data]);
+
+  // Bildirim izni iste (login sonrası, bir kez)
+  useEffect(function() {
+    if (user && "Notification" in window && Notification.permission === "default") {
+      setTimeout(function() {
+        Notification.requestPermission().catch(function(){});
+      }, 3000);
+    }
+  }, [user]);
 
   // Audit log'u API'ye de gönder
   var _addAuditLogOrig = addAuditLog;
@@ -1323,7 +1348,13 @@ function Sidebar(_ref2) {
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "sidebar-section"
-  }, "Men\xFC"), (menus[user.role] || []).map(function (m) {
+  }, "Men\xFC"), (menus[user.role] || []).filter(function (m) {
+    // Kişi bazlı yetki: custom_pages tanımlıysa sadece izin verilenleri göster
+    if (user.custom_pages && Array.isArray(user.custom_pages)) {
+      return user.custom_pages.indexOf(m.id) >= 0;
+    }
+    return true;
+  }).map(function (m) {
     return /*#__PURE__*/React.createElement("button", {
       key: m.id,
       className: "nav-btn".concat(page === m.id ? " active" : ""),
@@ -1478,10 +1509,16 @@ function MoldHistoryModal(_ref3) {
       color: "#6b7fa3",
       marginTop: 3
     }
-  }, m.part_name, " \xB7 ", m.part_code, " \xB7 ", m.location)), /*#__PURE__*/React.createElement("button", {
-    className: "close-btn",
-    onClick: onClose
-  }, "\u2715")), /*#__PURE__*/React.createElement("div", {
+  }, m.part_name, " \xB7 ", m.part_code, " \xB7 ", m.location)), /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
+    React.createElement("button", {
+      style: { background: "#1565c0", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 },
+      onClick: function() { generateMoldQR(m.id); },
+      title: "QR kod oluştur — telefonla okutup arıza aç"
+    }, "\uD83D\uDCF1 QR Kod"),
+    React.createElement("button", {
+      className: "close-btn",
+      onClick: onClose
+    }, "\u2715"))), /*#__PURE__*/React.createElement("div", {
     style: {
       background: "#f5f7fb",
       borderBottom: "1px solid #e8edf2",
@@ -2190,10 +2227,16 @@ function RCAModalLegacy(_ref0) {
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "modal-head"
-  }, /*#__PURE__*/React.createElement("h2", null, "\uD83D\uDD0D K\xF6k Neden Analizi (RCA) \u2014 ", wo.mold_id), /*#__PURE__*/React.createElement("button", {
-    className: "close-btn",
-    onClick: onClose
-  }, "\u2715")), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("h2", null, "\uD83D\uDD0D K\xF6k Neden Analizi (RCA) \u2014 ", wo.mold_id), /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
+    React.createElement("button", {
+      style: { background: "#1565c0", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 },
+      onClick: function() { generateMoldQR(m.id); },
+      title: "QR kod oluştur — telefonla okutup arıza aç"
+    }, "\uD83D\uDCF1 QR Kod"),
+    React.createElement("button", {
+      className: "close-btn",
+      onClick: onClose
+    }, "\u2715"))), /*#__PURE__*/React.createElement("div", {
     className: "modal-body"
   }, /*#__PURE__*/React.createElement("div", {
     className: "alert-box alert-info",
@@ -3565,55 +3608,89 @@ function AdminPanel(_ref19) {
     );
   }
     if (page === "permissions") {
-    var rolePerms = {
-      leader: {label:"Lider",pages:["dash","inventory","jobs","matrix","molds","reports","critical","tvmode"],desc:{dash:"Dashboard",inventory:"Envanter Görünümü",jobs:"Arıza Havuzu",matrix:"Teknisyen Matrisi",molds:"Kalıplar",reports:"Raporlar",critical:"Kritik Analiz",tvmode:"TV Modu"}},
-      tech: {label:"Teknisyen",pages:["my","techpool","waiting","done","tvmode"],desc:{my:"İşlerim",techpool:"Arıza Havuzu",waiting:"Beklemeye Alınan",done:"Tamamlananlar",tvmode:"TV Modu"}},
-      op: {label:"Operatör",pages:["report","history"],desc:{report:"Arıza Bildir",history:"Geçmiş"}}
+    var allPages = {
+      dash: "Dashboard", inventory: "Envanter Görünümü", molds: "Kalıplar/Envanter",
+      jobs: "Arıza Havuzu", pool: "Arıza Havuzu", myjobs: "İşlerim", create_wo: "İş Emri Oluştur",
+      matrix: "Teknisyen Matrisi", reports: "Raporlar", critical: "Kritik Analiz",
+      spareparts: "Yedek Parça", users: "Kullanıcılar", audit: "Denetim İzi",
+      sysadmin: "Sistem Yönetimi", tvmode: "TV Modu", report: "Arıza Bildir", history: "Geçmiş"
     };
-    return React.createElement("div",{className:"anim"},
-      React.createElement("h2",{style:{fontSize:16,fontWeight:800,color:"#0f2044",marginBottom:6}},"🔑 Yetki Yönetimi"),
-      React.createElement("p",{style:{fontSize:11,color:"#6b7fa3",marginBottom:16}},"Her rolün erişebildiği sayfaları görüntüleyin. Admin tüm sayfalara tam erişime sahiptir."),
-      // Admin kartı
-      React.createElement("div",{className:"card",style:{marginBottom:12,borderLeft:"4px solid #ff9800"}},
-        React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
-          React.createElement("div",null,
-            React.createElement("div",{style:{fontWeight:800,fontSize:14,color:"#0f2044"}},"👔 Admin"),
-            React.createElement("div",{style:{fontSize:11,color:"#6b7fa3",marginTop:2}},"Tam yetki — tüm sayfalar, kullanıcı yönetimi, sistem ayarları, yedekleme, QR kod")
+    var roleDefaults = {
+      admin: Object.keys(allPages),
+      leader: ["dash", "myjobs", "inventory", "jobs", "matrix", "molds", "reports", "critical", "tvmode"],
+      tech: ["my", "techpool", "waiting", "done", "tvmode"],
+      op: ["report", "history"]
+    };
+    var nonAdminUsers = (data.users || []).filter(function(u) { return u.role !== "admin"; });
+
+    return React.createElement("div", { className: "anim" },
+      React.createElement("h2", { style: { fontSize: 18, fontWeight: 800, color: "#0f2044", marginBottom: 4 } }, "🔑 Yetki Yönetimi"),
+      React.createElement("p", { style: { fontSize: 12, color: "#6b7fa3", marginBottom: 16 } }, "Kişi bazlı sayfa erişim yetkileri. Boş bırakılırsa rol varsayılanı geçerli olur."),
+
+      // Admin bilgi kartı
+      React.createElement("div", { className: "card", style: { marginBottom: 16, borderLeft: "4px solid #ff9800", background: "#fff8f0" } },
+        React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
+          React.createElement("div", null,
+            React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: "#0f2044" } }, "👔 Yöneticiler (Admin)"),
+            React.createElement("div", { style: { fontSize: 11, color: "#6b7fa3", marginTop: 2 } }, "Tüm sayfalara sınırsız erişim — değiştirilemez")
           ),
-          React.createElement("span",{style:{background:"#ff9800",color:"#fff",padding:"4px 12px",borderRadius:20,fontSize:10,fontWeight:700}},"TAM ERİŞİM")
+          React.createElement("span", { style: { background: "#ff9800", color: "#fff", padding: "4px 12px", borderRadius: 20, fontSize: 10, fontWeight: 700 } }, "TAM YETKİ")
         )
       ),
-      // Diğer roller
-      Object.keys(rolePerms).map(function(role){
-        var rp=rolePerms[role];
-        var userCount=(data.users||[]).filter(function(u){return u.role===role;}).length;
-        return React.createElement("div",{key:role,className:"card",style:{marginBottom:12,borderLeft:"4px solid "+(role==="leader"?"#1565c0":role==="tech"?"#e65100":"#1a6b3c")}},
-          React.createElement("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}},
-            React.createElement("div",null,
-              React.createElement("div",{style:{fontWeight:800,fontSize:14,color:"#0f2044"}},role==="leader"?"👷 "+rp.label:role==="tech"?"🔧 "+rp.label:"⚙️ "+rp.label),
-              React.createElement("div",{style:{fontSize:11,color:"#6b7fa3",marginTop:2}},userCount+" kullanıcı bu role sahip")
-            )
-          ),
-          React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:6}},
-            rp.pages.map(function(p){
-              return React.createElement("span",{key:p,style:{background:"#f0f4ff",color:"#1565c0",padding:"4px 10px",borderRadius:6,fontSize:10,fontWeight:600,border:"1px solid #c5cae9"}},
-                rp.desc[p]||p
-              );
-            })
-          ),
-          // Bu role ait kullanıcılar
-          React.createElement("div",{style:{marginTop:10,borderTop:"1px solid #f0f3f7",paddingTop:8}},
-            React.createElement("div",{style:{fontSize:10,color:"#9aa5b4",marginBottom:4}},"Bu roldeki kullanıcılar:"),
-            React.createElement("div",{style:{display:"flex",flexWrap:"wrap",gap:4}},
-              (data.users||[]).filter(function(u){return u.role===role;}).map(function(u){
-                return React.createElement("span",{key:u.id,style:{background:"#fff",border:"1px solid #e8edf2",borderRadius:4,padding:"2px 8px",fontSize:10,color:"#0f2044"}},u.name||u.username);
+
+      // Kişi bazlı yetki kartları
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(340px,1fr))", gap: 14 } },
+        nonAdminUsers.map(function(u) {
+          var roleColor = u.role === "leader" ? "#1565c0" : u.role === "tech" ? "#e65100" : "#1a6b3c";
+          var roleLabel = u.role === "leader" ? "Lider" : u.role === "tech" ? "Teknisyen" : "Operatör";
+          var userPerms = u.custom_pages || roleDefaults[u.role] || [];
+          var hasCustom = !!u.custom_pages;
+          return React.createElement("div", { key: u.id, className: "card", style: { borderLeft: "4px solid " + roleColor } },
+            React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } },
+              React.createElement("div", null,
+                React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: "#0f2044" } }, u.name),
+                React.createElement("div", { style: { fontSize: 10, color: roleColor, fontWeight: 600 } }, roleLabel + " · @" + u.user)
+              ),
+              hasCustom && React.createElement("span", { style: { background: "#7b1fa2", color: "#fff", padding: "3px 10px", borderRadius: 12, fontSize: 9, fontWeight: 700 } }, "ÖZEL YETKİ")
+            ),
+            React.createElement("div", { style: { fontSize: 10, color: "#9aa5b4", marginBottom: 8 } }, "Erişebildiği sayfalar (tıklayarak değiştir):"),
+            React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } },
+              Object.keys(allPages).filter(function(pg) {
+                // Role uygun sayfaları göster
+                return roleDefaults[u.role].indexOf(pg) >= 0 || (u.custom_pages && u.custom_pages.indexOf(pg) >= 0) || ["dash","tvmode","reports","molds","inventory"].indexOf(pg) >= 0;
+              }).map(function(pg) {
+                var active = userPerms.indexOf(pg) >= 0;
+                return React.createElement("button", {
+                  key: pg,
+                  onClick: function() {
+                    var current = (u.custom_pages || roleDefaults[u.role] || []).slice();
+                    var idx = current.indexOf(pg);
+                    if (idx >= 0) current.splice(idx, 1); else current.push(pg);
+                    updUser(u.id, { custom_pages: current });
+                    addAuditLog && addAuditLog({ user_id: user.id, user_name: user.name, role: "admin", action: "Yetki Değiştirildi", entity_type: "user", entity_id: u.id, detail: u.name + " → " + pg + (idx >= 0 ? " kaldırıldı" : " eklendi") });
+                  },
+                  style: {
+                    padding: "4px 10px", borderRadius: 6, fontSize: 10, fontWeight: 600, cursor: "pointer",
+                    border: "1px solid " + (active ? roleColor : "#e0e0e0"),
+                    background: active ? roleColor + "15" : "#fafafa",
+                    color: active ? roleColor : "#9aa5b4"
+                  }
+                }, (active ? "✓ " : "") + allPages[pg]);
               })
-            )
-          )
-        );
-      })
+            ),
+            hasCustom && React.createElement("button", {
+              onClick: function() {
+                updUser(u.id, { custom_pages: null });
+                addAuditLog && addAuditLog({ user_id: user.id, user_name: user.name, role: "admin", action: "Yetki Sıfırlandı", entity_type: "user", entity_id: u.id, detail: u.name + " rol varsayılanına döndü" });
+              },
+              style: { marginTop: 10, padding: "6px 12px", borderRadius: 6, fontSize: 10, fontWeight: 600, cursor: "pointer", border: "1px solid #e0e0e0", background: "#fff", color: "#6b7fa3", width: "100%" }
+            }, "↺ Rol Varsayılanına Sıfırla")
+          );
+        })
+      )
     );
   }
+  
   if (page === "sysadmin") {
     return /*#__PURE__*/React.createElement(SysAdminPage, {
       data: data, deleteWO: deleteWO, deleteMold: deleteMold,
@@ -4182,24 +4259,35 @@ function LeaderPanel(_ref24) {
   
   if (page === "myjobs") {
     var myWos = (data.wos || []).filter(function(w) { return w.assigned === user.id && w.status !== "KAPATILDI"; });
+    var otherTechs = (data.users || []).filter(function(u) { return (u.role === "tech" || u.role === "leader") && u.id !== user.id; });
     return React.createElement("div", { className: "anim" },
       React.createElement("h2", { style: { fontSize: 18, fontWeight: 800, color: "#0f2044", marginBottom: 14 } }, "🔧 İşlerim (" + myWos.length + ")"),
       myWos.length === 0 && React.createElement("div", { className: "card", style: { textAlign: "center", padding: 40, color: "#6b7fa3" } }, "Üzerinize atanmış aktif iş yok"),
       myWos.map(function(wo) {
         var pColor = wo.priority === "KRİTİK" ? "#c62828" : wo.priority === "YÜKSEK" ? "#e65100" : "#1565c0";
         var mold = (data.molds || []).find(function(m) { return m.id === wo.mold_id; });
+        var stColor = wo.status === "DEVAM_EDİYOR" ? "#1565c0" : wo.status === "BEKLEMEYE_ALINDI" ? "#e65100" : "#f9a825";
         return React.createElement("div", { key: wo.id, className: "card", style: { marginBottom: 10, borderLeft: "4px solid " + pColor } },
-          React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 } },
-            React.createElement("div", { style: { flex: 1 } },
-              React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", marginBottom: 4 } },
+          React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" } },
+            React.createElement("div", { style: { flex: 1, minWidth: 200 } },
+              React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", marginBottom: 4, flexWrap: "wrap" } },
                 React.createElement("span", { style: { fontWeight: 800, fontSize: 14, color: "#0f2044" } }, wo.id),
                 React.createElement("span", { style: { color: pColor, fontWeight: 700, fontSize: 10, background: pColor + "15", padding: "2px 8px", borderRadius: 4 } }, wo.priority),
-                React.createElement("span", { style: { fontSize: 10, color: "#fff", background: wo.status === "DEVAM_EDİYOR" ? "#1565c0" : "#e65100", padding: "2px 8px", borderRadius: 4 } }, wo.status)
+                React.createElement("span", { style: { fontSize: 10, color: "#fff", background: stColor, padding: "2px 8px", borderRadius: 4 } }, wo.status)
               ),
               React.createElement("div", { style: { fontSize: 12, color: "#2d3748", marginBottom: 2 } }, wo.description || ""),
               React.createElement("div", { style: { fontSize: 10, color: "#6b7fa3" } }, wo.mold_id + (mold ? " — " + (mold.part_name || "").slice(0, 30) : "") + (wo.cavity_no ? " · Göz: " + wo.cavity_no : ""))
             ),
-            React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6 } },
+            React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6, minWidth: 150 } },
+              // BEKLEMEDE → Başla
+              wo.status === "BEKLEMEDE" && React.createElement("button", {
+                className: "btn", style: { background: "#1565c0", color: "#fff", fontWeight: 700, fontSize: 11, padding: "8px 16px" },
+                onClick: function() {
+                  updWO(wo.id, function(w) { w.status = "DEVAM_EDİYOR"; if (!w.started_at) w.started_at = nowStr(); return w; });
+                  addAuditLog && addAuditLog({ user_id: user.id, user_name: user.name, role: "leader", action: "İşe Başlandı", entity_type: "wo", entity_id: wo.id, detail: wo.id + " başlatıldı" });
+                }
+              }, "▶ İşe Başla"),
+              // DEVAM_EDİYOR → Tamamla + Beklet
               wo.status === "DEVAM_EDİYOR" && React.createElement("button", {
                 className: "btn", style: { background: "#1a6b3c", color: "#fff", fontWeight: 700, fontSize: 11, padding: "8px 16px" },
                 onClick: function() {
@@ -4217,16 +4305,30 @@ function LeaderPanel(_ref24) {
               }, "⏸ Beklet"),
               wo.status === "BEKLEMEYE_ALINDI" && React.createElement("button", {
                 className: "btn", style: { background: "#1565c0", color: "#fff", fontWeight: 700, fontSize: 11, padding: "8px 16px" },
-                onClick: function() {
-                  updWO(wo.id, function(w) { w.status = "DEVAM_EDİYOR"; return w; });
+                onClick: function() { updWO(wo.id, function(w) { w.status = "DEVAM_EDİYOR"; return w; }); }
+              }, "▶ Devam Et"),
+              // BAŞKASINA ATA — her durumda
+              React.createElement("select", {
+                className: "form-input", style: { fontSize: 11, padding: "6px 8px" }, defaultValue: "",
+                onChange: function(e) {
+                  if (!e.target.value) return;
+                  var newTech = (data.users || []).find(function(u) { return u.id === e.target.value; });
+                  if (!window.confirm(wo.id + " işini " + (newTech ? newTech.name : "") + " kişisine devretmek istiyor musunuz?")) { e.target.value = ""; return; }
+                  updWO(wo.id, function(w) { w.assigned = e.target.value; w.status = "BEKLEMEDE"; w.started_at = null; return w; });
+                  addAuditLog && addAuditLog({ user_id: user.id, user_name: user.name, role: "leader", action: "İş Devredildi", entity_type: "wo", entity_id: wo.id, detail: wo.id + " → " + (newTech ? newTech.name : "") });
+                  e.target.value = "";
                 }
-              }, "▶ Devam Et")
+              },
+                React.createElement("option", { value: "" }, "🔄 Başkasına Ata..."),
+                otherTechs.map(function(t) { return React.createElement("option", { key: t.id, value: t.id }, t.name); })
+              )
             )
           )
         );
       })
     );
   }
+  
   if (page === "tvmode") { return React.createElement(TVModePage, { data: data }); }
   if (page === "matrix") {
     return /*#__PURE__*/React.createElement("div", {
@@ -4744,10 +4846,16 @@ function AssignModal(_ref25) {
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "modal-head"
-  }, /*#__PURE__*/React.createElement("h2", null, "Teknisyen Ata \u2014 ", wo.mold_id), /*#__PURE__*/React.createElement("button", {
-    className: "close-btn",
-    onClick: onClose
-  }, "\u2715")), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("h2", null, "Teknisyen Ata \u2014 ", wo.mold_id), /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
+    React.createElement("button", {
+      style: { background: "#1565c0", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 },
+      onClick: function() { generateMoldQR(m.id); },
+      title: "QR kod oluştur — telefonla okutup arıza aç"
+    }, "\uD83D\uDCF1 QR Kod"),
+    React.createElement("button", {
+      className: "close-btn",
+      onClick: onClose
+    }, "\u2715"))), /*#__PURE__*/React.createElement("div", {
     className: "modal-body"
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -6542,10 +6650,16 @@ function MoldFormModal(_ref29) {
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "modal-head"
-  }, /*#__PURE__*/React.createElement("h2", null, "Kal\u0131p ", mold ? "Düzenle" : "Ekle"), /*#__PURE__*/React.createElement("button", {
-    className: "close-btn",
-    onClick: onClose
-  }, "\u2715")), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("h2", null, "Kal\u0131p ", mold ? "Düzenle" : "Ekle"), /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
+    React.createElement("button", {
+      style: { background: "#1565c0", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 },
+      onClick: function() { generateMoldQR(m.id); },
+      title: "QR kod oluştur — telefonla okutup arıza aç"
+    }, "\uD83D\uDCF1 QR Kod"),
+    React.createElement("button", {
+      className: "close-btn",
+      onClick: onClose
+    }, "\u2715"))), /*#__PURE__*/React.createElement("div", {
     className: "modal-body"
   }, /*#__PURE__*/React.createElement("div", {
     className: "form-grid-2"
@@ -6892,10 +7006,16 @@ function ExcelImportModal(_ref30) {
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "modal-head"
-  }, /*#__PURE__*/React.createElement("h2", null, "\uD83D\uDCE5 Excel'den Kal\u0131p \u0130\xE7e Aktar"), /*#__PURE__*/React.createElement("button", {
-    className: "close-btn",
-    onClick: onClose
-  }, "\u2715")), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("h2", null, "\uD83D\uDCE5 Excel'den Kal\u0131p \u0130\xE7e Aktar"), /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
+    React.createElement("button", {
+      style: { background: "#1565c0", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 },
+      onClick: function() { generateMoldQR(m.id); },
+      title: "QR kod oluştur — telefonla okutup arıza aç"
+    }, "\uD83D\uDCF1 QR Kod"),
+    React.createElement("button", {
+      className: "close-btn",
+      onClick: onClose
+    }, "\u2715"))), /*#__PURE__*/React.createElement("div", {
     className: "modal-body"
   }, /*#__PURE__*/React.createElement("div", {
     className: "alert-box alert-info",
@@ -7050,10 +7170,16 @@ function UserFormModal(_ref31) {
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "modal-head"
-  }, /*#__PURE__*/React.createElement("h2", null, user !== null && user !== void 0 && user.id ? "Kullanıcı Düzenle" : "Ekle"), /*#__PURE__*/React.createElement("button", {
-    className: "close-btn",
-    onClick: onClose
-  }, "\u2715")), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("h2", null, user !== null && user !== void 0 && user.id ? "Kullanıcı Düzenle" : "Ekle"), /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
+    React.createElement("button", {
+      style: { background: "#1565c0", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 },
+      onClick: function() { generateMoldQR(m.id); },
+      title: "QR kod oluştur — telefonla okutup arıza aç"
+    }, "\uD83D\uDCF1 QR Kod"),
+    React.createElement("button", {
+      className: "close-btn",
+      onClick: onClose
+    }, "\u2715"))), /*#__PURE__*/React.createElement("div", {
     className: "modal-body"
   }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
@@ -10308,10 +10434,16 @@ function MoldEditModal(_ref65) {
       color: "#6b7fa3",
       marginTop: 2
     }
-  }, mold.part_name)), /*#__PURE__*/React.createElement("button", {
-    className: "close-btn",
-    onClick: onClose
-  }, "\u2715")), /*#__PURE__*/React.createElement("div", {
+  }, mold.part_name)), /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
+    React.createElement("button", {
+      style: { background: "#1565c0", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 },
+      onClick: function() { generateMoldQR(m.id); },
+      title: "QR kod oluştur — telefonla okutup arıza aç"
+    }, "\uD83D\uDCF1 QR Kod"),
+    React.createElement("button", {
+      className: "close-btn",
+      onClick: onClose
+    }, "\u2715"))), /*#__PURE__*/React.createElement("div", {
     className: "tabs",
     style: {
       padding: "0 22px",
@@ -12258,10 +12390,16 @@ function ManualWOModal(_ref69) {
       color: "#6b7fa3",
       marginTop: 2
     }
-  }, "Lider taraf\u0131ndan a\xE7\u0131lan i\u015F emri")), /*#__PURE__*/React.createElement("button", {
-    className: "close-btn",
-    onClick: onClose
-  }, "\u2715")), /*#__PURE__*/React.createElement("div", {
+  }, "Lider taraf\u0131ndan a\xE7\u0131lan i\u015F emri")), /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
+    React.createElement("button", {
+      style: { background: "#1565c0", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 },
+      onClick: function() { generateMoldQR(m.id); },
+      title: "QR kod oluştur — telefonla okutup arıza aç"
+    }, "\uD83D\uDCF1 QR Kod"),
+    React.createElement("button", {
+      className: "close-btn",
+      onClick: onClose
+    }, "\u2715"))), /*#__PURE__*/React.createElement("div", {
     className: "modal-body"
   }, /*#__PURE__*/React.createElement("div", {
     className: "form-group"
@@ -13933,10 +14071,16 @@ function RCAModalNew(_ref74) {
       color: "#6b7fa3",
       marginTop: 2
     }
-  }, (_wo$description = wo.description) === null || _wo$description === void 0 ? void 0 : _wo$description.substring(0, 60))), /*#__PURE__*/React.createElement("button", {
-    className: "close-btn",
-    onClick: onClose
-  }, "\u2715")), /*#__PURE__*/React.createElement("div", {
+  }, (_wo$description = wo.description) === null || _wo$description === void 0 ? void 0 : _wo$description.substring(0, 60))), /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
+    React.createElement("button", {
+      style: { background: "#1565c0", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 },
+      onClick: function() { generateMoldQR(m.id); },
+      title: "QR kod oluştur — telefonla okutup arıza aç"
+    }, "\uD83D\uDCF1 QR Kod"),
+    React.createElement("button", {
+      className: "close-btn",
+      onClick: onClose
+    }, "\u2715"))), /*#__PURE__*/React.createElement("div", {
     className: "modal-body"
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -14494,10 +14638,16 @@ function WODeleteModal(_ref78) {
       color: "#6b7fa3",
       marginTop: 2
     }
-  }, wo.id, " \u2014 ", wo.mold_id)), /*#__PURE__*/React.createElement("button", {
-    className: "close-btn",
-    onClick: onClose
-  }, "\u2715")), /*#__PURE__*/React.createElement("div", {
+  }, wo.id, " \u2014 ", wo.mold_id)), /*#__PURE__*/React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center" } },
+    React.createElement("button", {
+      style: { background: "#1565c0", color: "#fff", border: "none", borderRadius: 8, padding: "8px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 },
+      onClick: function() { generateMoldQR(m.id); },
+      title: "QR kod oluştur — telefonla okutup arıza aç"
+    }, "\uD83D\uDCF1 QR Kod"),
+    React.createElement("button", {
+      className: "close-btn",
+      onClick: onClose
+    }, "\u2715"))), /*#__PURE__*/React.createElement("div", {
     className: "modal-body"
   }, /*#__PURE__*/React.createElement("div", {
     className: "alert-box alert-danger",
@@ -15415,7 +15565,8 @@ function AdvancedReports(_ref) {
     { id: "mttr", ico: "⏱", label: "MTTR (Tamir Süresi)" },
     { id: "mtbf", ico: "🔄", label: "MTBF (Arızasızlık)" },
     { id: "person", ico: "👤", label: "Kişi Bazlı Performans" },
-    { id: "recurring", ico: "🔁", label: "Tekrar Eden Arızalar" }
+    { id: "recurring", ico: "🔁", label: "Tekrar Eden Arızalar" },
+    { id: "shift", ico: "🕐", label: "Vardiya Analizi" }
   ];
 
   return React.createElement("div", { className: "anim" },
@@ -15615,6 +15766,49 @@ function ReportContent(_ref) {
             }))
           )
         )
+    );
+  }
+
+  // VARDİYA ANALİZİ
+  if (type === "shift") {
+    function getShift(dateStr) {
+      if (!dateStr) return "Bilinmiyor";
+      var h = new Date(dateStr.replace(" ", "T")).getHours();
+      if (h >= 8 && h < 16) return "1. Vardiya (08-16)";
+      if (h >= 16 && h < 24) return "2. Vardiya (16-24)";
+      return "3. Vardiya (00-08)";
+    }
+    var shiftMap = { "1. Vardiya (08-16)": 0, "2. Vardiya (16-24)": 0, "3. Vardiya (00-08)": 0 };
+    ariz.forEach(function(w) {
+      var sh = getShift(w.created_at);
+      if (shiftMap[sh] !== undefined) shiftMap[sh]++;
+    });
+    var shiftData = Object.keys(shiftMap).map(function(k) { return { label: k, value: shiftMap[k] }; });
+    // Vardiya bazlı ortalama tamir süresi
+    var shiftMttr = { "1. Vardiya (08-16)": { t: 0, c: 0 }, "2. Vardiya (16-24)": { t: 0, c: 0 }, "3. Vardiya (00-08)": { t: 0, c: 0 } };
+    closed.filter(function(w) { return w.started_at && w.closed_at; }).forEach(function(w) {
+      var sh = getShift(w.created_at);
+      if (shiftMttr[sh]) { shiftMttr[sh].t += _rptMin(w.started_at, w.closed_at); shiftMttr[sh].c++; }
+    });
+    var mttrData = Object.keys(shiftMttr).map(function(k) {
+      return { label: k, value: shiftMttr[k].c > 0 ? Math.round(shiftMttr[k].t / shiftMttr[k].c) : 0 };
+    });
+    var busiest = shiftData.reduce(function(a, b) { return b.value > a.value ? b : a; }, shiftData[0]);
+    return React.createElement("div", null,
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 16 } },
+        shiftData.map(function(s, i) {
+          return React.createElement(RptKPI, { key: i, ico: i === 0 ? "🌅" : i === 1 ? "🌆" : "🌙", val: s.value, label: s.label, color: s.label === busiest.label && busiest.value > 0 ? "#c62828" : "#1565c0" });
+        })
+      ),
+      React.createElement("div", { className: "card", style: { marginBottom: 16 } },
+        React.createElement("h3", { style: { fontSize: 14, fontWeight: 800, marginBottom: 6, color: "#0f2044" } }, "🕐 Vardiya Bazlı Arıza Dağılımı"),
+        React.createElement("p", { style: { fontSize: 11, color: "#6b7fa3", marginBottom: 14 } }, "Hangi vardiyada daha çok arıza oluşuyor?"),
+        React.createElement(BarChartH, { data: shiftData, color: "#1565c0", unit: " arıza" })
+      ),
+      React.createElement("div", { className: "card" },
+        React.createElement("h3", { style: { fontSize: 14, fontWeight: 800, marginBottom: 6, color: "#0f2044" } }, "⏱ Vardiya Bazlı Ortalama Tamir Süresi"),
+        React.createElement(BarChartH, { data: mttrData, color: "#e65100", unit: " dk" })
+      )
     );
   }
 
