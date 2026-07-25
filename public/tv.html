@@ -6,23 +6,23 @@
 <title>CMMS v15 — TV Dashboard</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a1628;color:#fff;overflow-x:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f1e38;color:#fff;overflow-x:hidden}
 .top{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;flex-wrap:wrap;gap:8px}
 .grid{display:grid;gap:12px;padding:0 20px;margin-bottom:16px}
 .kpi-grid{grid-template-columns:repeat(4,1fr)}
 .main-grid{grid-template-columns:1fr 1fr 1fr}
 @media(max-width:1000px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.main-grid{grid-template-columns:1fr}}
-.card{background:#111e33;border-radius:12px;padding:14px;max-height:420px;overflow-y:auto}
-.kpi{background:#0d1a2e;border-radius:14px;padding:16px 12px;text-align:center;border:1px solid #1a3a6b}
-.kpi .ico{font-size:28px}.kpi .val{font-size:36px;font-weight:900;line-height:1;margin:4px 0}.kpi .lbl{font-size:10px;color:#7fa8d4;font-weight:600}
-.wo-row{padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;justify-content:space-between;align-items:center;gap:6px}
+.card{background:#152642;border-radius:14px;padding:18px;max-height:480px;overflow-y:auto}
+.kpi{background:#1a2d4d;border-radius:16px;padding:20px 14px;text-align:center;border:1px solid #2a4a7a}
+.kpi .ico{font-size:38px}.kpi .val{font-size:36px;font-weight:900;line-height:1;margin:4px 0}.kpi .lbl{font-size:10px;color:#7fa8d4;font-weight:600}
+.wo-row{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.1);display:flex;justify-content:space-between;align-items:center;gap:8px}
 .wo-row:nth-child(even){background:rgba(255,255,255,.02)}
-.btn-claim{background:linear-gradient(135deg,#e65100,#bf360c);color:#fff;border:none;border-radius:8px;padding:7px 16px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;transition:transform .15s}
+.btn-claim{background:linear-gradient(135deg,#ff6d00,#e65100);color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:15px;font-weight:800;cursor:pointer;white-space:nowrap;transition:transform .15s;margin-top:6px}
 .btn-claim:hover{transform:scale(1.05)}
-.badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:9px;font-weight:700}
+.badge{display:inline-block;padding:4px 10px;border-radius:6px;font-size:13px;font-weight:800}
 .p-KRİTİK,.p-CRITICAL{color:#ff5252;background:rgba(255,82,82,.15)}.p-YÜKSEK,.p-HIGH{color:#ff9800;background:rgba(255,152,0,.15)}
 .p-NORMAL{color:#64b5f6;background:rgba(100,181,246,.15)}.p-DÜŞÜK,.p-LOW{color:#78909c;background:rgba(120,144,156,.15)}
-.progress-row{background:#0d1a2e;border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;border-left:3px solid #1565c0}
+.progress-row{background:#1e3556;border-radius:10px;padding:14px 16px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;border-left:5px solid #1565c0}
 /* Claim Modal */
 .overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(10,22,40,.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:9999}
 .claim-card{background:linear-gradient(145deg,#111e33,#0d1a2e);border:1px solid #1a3a6b;border-radius:20px;padding:32px 28px;width:100%;max-width:340px;box-shadow:0 24px 80px rgba(0,0,0,.6)}
@@ -43,7 +43,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .notif{position:fixed;top:16px;right:16px;padding:14px 22px;border-radius:12px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 8px 32px rgba(0,0,0,.5);animation:slideIn .3s ease;cursor:pointer;max-width:400px;backdrop-filter:blur(8px)}
 .n-danger{background:rgba(198,40,40,.95);border:1px solid #ff5252}.n-success{background:rgba(26,107,60,.95);border:1px solid #4caf50}
 @keyframes slideIn{from{transform:translateX(120px);opacity:0}to{transform:translateX(0);opacity:1}}
-.empty{color:#2a4a6b;text-align:center;padding:30px;font-size:12px}
+.empty{color:#7fa8d4;text-align:center;padding:40px;font-size:18px;font-weight:600}
 </style>
 </head>
 <body>
@@ -82,8 +82,8 @@ function render(d){
   var now=new Date();
   var h='';
   // Top
-  h+='<div class="top"><div><h1 style="font-size:20px;font-weight:900">🏭 '+t("title")+'</h1>';
-  h+='<div style="font-size:10px;color:#4a6a8a;margin-top:2px">'+now.toLocaleDateString("tr-TR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})+" — "+now.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})+" · 12"+t("update")+"</div></div>";
+  h+='<div class="top"><div><h1 style="font-size:30px;font-weight:900">🏭 '+t("title")+'</h1>';
+  h+='<div style="font-size:15px;color:#a8c5e8;margin-top:4px;font-weight:600">'+now.toLocaleDateString("tr-TR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})+" — "+now.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})+" · 12"+t("update")+"</div></div>";
   h+='<div style="display:flex;gap:8px;align-items:center">';
   h+='<a href="/" style="background:#1a6b3c;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:12px;font-weight:700;cursor:pointer;text-decoration:none;box-shadow:0 2px 8px rgba(26,107,60,.4);transition:all .2s">🔐 Giriş Yap</a>';
   h+='<button onclick="toggleFS()" style="background:#1565c0;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:11px;font-weight:700;cursor:pointer">⛶ '+t("fullscreen")+'</button>';
@@ -98,35 +98,35 @@ function render(d){
   // 3 sütun
   h+='<div class="grid main-grid">';
   // Pool
-  h+='<div class="card" style="border:1.5px solid #e65100"><h3 style="font-size:13px;font-weight:800;color:#ff9800;margin-bottom:10px">🔧 '+t("pool")+' — '+t("poolSub")+' ('+((d.poolWos||[]).length)+')</h3>';
+  h+='<div class="card" style="border:1.5px solid #e65100"><h3 style="font-size:19px;font-weight:800;color:#ffb74d;margin-bottom:14px">🔧 '+t("pool")+' — '+t("poolSub")+' ('+((d.poolWos||[]).length)+')</h3>';
   if(!(d.poolWos||[]).length)h+='<div class="empty">'+t("noPool")+'</div>';
   (d.poolWos||[]).forEach(function(w){
-    h+='<div style="background:#0d1a2e;border-radius:8px;padding:9px 11px;margin-bottom:5px;border:1px solid #1a3a6b;display:flex;justify-content:space-between;align-items:center">';
-    h+='<div><div style="font-weight:700;color:#fff;font-size:12px">'+w.id+'</div><div style="color:#4a6a8a;font-size:9px;margin-top:1px">'+w.mold_id+' · '+w.type+'</div>';
-    h+='<div style="color:#2a4a6b;font-size:8px;margin-top:1px">'+w.description+'</div></div>';
+    h+='<div style="background:#1e3556;border-radius:10px;padding:13px 15px;margin-bottom:8px;border:1px solid #2a4a7a;display:flex;justify-content:space-between;align-items:center">';
+    h+='<div><div style="font-weight:800;color:#fff;font-size:17px">'+w.id+'</div><div style="color:#a8c5e8;font-size:14px;margin-top:3px;font-weight:600">'+w.mold_id+' · '+w.type+'</div>';
+    h+='<div style="color:#7fa8d4;font-size:13px;margin-top:2px">'+w.description+'</div></div>';
     h+='<div style="text-align:right"><span class="badge p-'+w.priority+'">'+w.priority+'</span><br>';
     h+='<button class="btn-claim" onclick="openClaim(\''+w.id+"','"+w.mold_id+"','"+w.type+"','"+(w.description||"").replace(/'/g,"")+"')\">🤚 "+t("claim")+'</button></div></div>';
   });
   h+='</div>';
   // Progress
-  h+='<div class="card" style="border:1.5px solid #1565c0"><h3 style="font-size:13px;font-weight:800;color:#64b5f6;margin-bottom:10px">🔄 '+t("progress")+' ('+((d.inProgressWos||[]).length)+')</h3>';
+  h+='<div class="card" style="border:1.5px solid #1565c0"><h3 style="font-size:19px;font-weight:800;color:#90caf9;margin-bottom:14px">🔄 '+t("progress")+' ('+((d.inProgressWos||[]).length)+')</h3>';
   if(!(d.inProgressWos||[]).length)h+='<div class="empty">'+t("noProgress")+'</div>';
   (d.inProgressWos||[]).forEach(function(w){
-    h+='<div class="progress-row"><div><div style="font-weight:700;color:#fff;font-size:12px">'+w.id+' <span style="color:#64b5f6;font-size:10px">→ '+(w.assigned||"?")+'</span></div>';
+    h+='<div class="progress-row"><div><div style="font-weight:800;color:#fff;font-size:17px">'+w.id+' <span style="color:#90caf9;font-size:14px">→ '+(w.assigned||"?")+'</span></div>';
     h+='<div style="color:#4a6a8a;font-size:9px;margin-top:2px">'+w.mold_id+' · '+w.type+'</div>';
-    h+='<div style="color:#2a4a6b;font-size:8px;margin-top:1px">'+w.description+'</div></div>';
+    h+='<div style="color:#7fa8d4;font-size:13px;margin-top:2px">'+w.description+'</div></div>';
     h+='<div style="text-align:right;font-size:8px;color:#2a4a6b">';
     if(w.started_at)h+='<div>'+t("start")+': '+(w.started_at||"").slice(11,16)+'</div>';
     h+='<span class="badge p-'+w.priority+'">'+w.priority+'</span></div></div>';
   });
   h+='</div>';
   // All open
-  h+='<div class="card"><h3 style="font-size:13px;font-weight:800;color:#fff;margin-bottom:10px">📋 '+t("allOpen")+' ('+d.open+')</h3>';
+  h+='<div class="card"><h3 style="font-size:19px;font-weight:800;color:#fff;margin-bottom:14px">📋 '+t("allOpen")+' ('+d.open+')</h3>';
   (d.openWos||[]).forEach(function(w){
     h+='<div class="wo-row"><div style="flex:1;min-width:0"><div style="display:flex;gap:5px;align-items:center">';
     h+='<span style="font-weight:700;color:#fff;font-size:10px">'+w.id+'</span><span class="badge p-'+w.priority+'">'+w.priority+'</span></div>';
-    h+='<div style="color:#4a6a8a;font-size:8px;margin-top:1px">'+w.mold_id+' · '+(w.description||"")+'</div></div>';
-    h+='<div style="font-size:8px;text-align:right">'+(w.assigned?'<span style="color:#64b5f6">👤 '+w.assigned+'</span>':'<span style="color:#ff9800">⏳ '+t("waiting")+'</span>')+'</div></div>';
+    h+='<div style="color:#a8c5e8;font-size:13px;margin-top:2px;font-weight:600">'+w.mold_id+' · '+(w.description||"")+'</div></div>';
+    h+='<div style="font-size:13px;text-align:right;font-weight:600">'+(w.assigned?'<span style="color:#90caf9">👤 '+w.assigned+'</span>':'<span style="color:#ffb74d">⏳ '+t("waiting")+'</span>')+'</div></div>';
   });
   h+='</div></div>';
   // Corner buttons
