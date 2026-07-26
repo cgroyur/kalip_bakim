@@ -191,11 +191,23 @@ app.post("/api/state", (req, res, next) => {
   for (const sw of serverWos) {
     if (deletedIds.has(sw.id)) continue; // istemci bilinçli silmiş
     if (clientMap.has(sw.id)) {
-      // Çakışma: daha YENİ değişiklik kazanır (updated_at)
+      // Çakışma çözümü: SADECE updated_at karşılaştırılır (created_at'e düşme!)
+      // created_at yerel saat, updated_at UTC — karıştırılamaz.
       const cw = clientMap.get(sw.id);
-      const sTime = new Date(sw.updated_at || sw.created_at || 0).getTime();
-      const cTime = new Date(cw.updated_at || cw.created_at || 0).getTime();
-      merged.push(cTime >= sTime ? cw : sw);
+      const sHas = !!sw.updated_at;
+      const cHas = !!cw.updated_at;
+      if (sHas && cHas) {
+        // İkisinde de damga var — yeni olan kazanır
+        const sTime = new Date(sw.updated_at).getTime();
+        const cTime = new Date(cw.updated_at).getTime();
+        merged.push(cTime >= sTime ? cw : sw);
+      } else if (cHas && !sHas) {
+        merged.push(cw); // sadece client değişmiş — client kazanır
+      } else if (sHas && !cHas) {
+        merged.push(sw); // sadece sunucu değişmiş — sunucu kazanır
+      } else {
+        merged.push(cw); // ikisinde de yok — client kazanır (son gönderen)
+      }
     } else {
       merged.push(sw); // istemci görmemiş — koru!
     }
