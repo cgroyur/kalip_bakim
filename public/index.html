@@ -4320,75 +4320,11 @@ function LeaderPanel(_ref24) {
   }
   
   if (page === "myjobs") {
-    var myWos = (data.wos || []).filter(function(w) { return w.assigned === user.id && w.status !== "KAPATILDI"; });
-    var otherTechs = (data.users || []).filter(function(u) { return (u.role === "tech" || u.role === "leader") && u.id !== user.id; });
-    return React.createElement("div", { className: "anim" },
-      React.createElement("h2", { style: { fontSize: 18, fontWeight: 800, color: "#0f2044", marginBottom: 14 } }, "🔧 İşlerim (" + myWos.length + ")"),
-      myWos.length === 0 && React.createElement("div", { className: "card", style: { textAlign: "center", padding: 40, color: "#6b7fa3" } }, "Üzerinize atanmış aktif iş yok"),
-      myWos.map(function(wo) {
-        var pColor = wo.priority === "KRİTİK" ? "#c62828" : wo.priority === "YÜKSEK" ? "#e65100" : "#1565c0";
-        var mold = (data.molds || []).find(function(m) { return m.id === wo.mold_id; });
-        var stColor = wo.status === "DEVAM_EDİYOR" ? "#1565c0" : wo.status === "BEKLEMEYE_ALINDI" ? "#e65100" : "#f9a825";
-        return React.createElement("div", { key: wo.id, className: "card", style: { marginBottom: 10, borderLeft: "4px solid " + pColor } },
-          React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" } },
-            React.createElement("div", { style: { flex: 1, minWidth: 200 } },
-              React.createElement("div", { style: { display: "flex", gap: 8, alignItems: "center", marginBottom: 4, flexWrap: "wrap" } },
-                React.createElement("span", { style: { fontWeight: 800, fontSize: 14, color: "#0f2044" } }, wo.id),
-                React.createElement("span", { style: { color: pColor, fontWeight: 700, fontSize: 10, background: pColor + "15", padding: "2px 8px", borderRadius: 4 } }, wo.priority),
-                React.createElement("span", { style: { fontSize: 10, color: "#fff", background: stColor, padding: "2px 8px", borderRadius: 4 } }, wo.status)
-              ),
-              React.createElement("div", { style: { fontSize: 12, color: "#2d3748", marginBottom: 2 } }, wo.description || ""),
-              React.createElement("div", { style: { fontSize: 10, color: "#6b7fa3" } }, wo.mold_id + (mold ? " — " + (mold.part_name || "").slice(0, 30) : "") + (wo.cavity_no ? " · Göz: " + wo.cavity_no : ""))
-            ),
-            React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 6, minWidth: 150 } },
-              // BEKLEMEDE → Başla
-              wo.status === "BEKLEMEDE" && React.createElement("button", {
-                className: "btn", style: { background: "#1565c0", color: "#fff", fontWeight: 700, fontSize: 11, padding: "8px 16px" },
-                onClick: function() {
-                  updWO(wo.id, function(w) { w.status = "DEVAM_EDİYOR"; if (!w.started_at) w.started_at = nowStr(); return w; });
-                  addAuditLog && addAuditLog({ user_id: user.id, user_name: user.name, role: "leader", action: "İşe Başlandı", entity_type: "wo", entity_id: wo.id, detail: wo.id + " başlatıldı" });
-                }
-              }, "▶ İşe Başla"),
-              // DEVAM_EDİYOR → Tamamla + Beklet
-              wo.status === "DEVAM_EDİYOR" && React.createElement("button", {
-                className: "btn", style: { background: "#1a6b3c", color: "#fff", fontWeight: 700, fontSize: 11, padding: "8px 16px" },
-                onClick: function() {
-                  if (!window.confirm(wo.id + " işini tamamladınız mı?")) return;
-                  updWO(wo.id, function(w) { w.status = "KAPATILDI"; w.closed_at = nowStr(); return w; });
-                  addAuditLog && addAuditLog({ user_id: user.id, user_name: user.name, role: "leader", action: "İş Tamamlandı", entity_type: "wo", entity_id: wo.id, detail: wo.id + " tamamlandı" });
-                }
-              }, "✅ Tamamla"),
-              wo.status === "DEVAM_EDİYOR" && React.createElement("button", {
-                className: "btn", style: { background: "#e65100", color: "#fff", fontWeight: 700, fontSize: 11, padding: "8px 16px" },
-                onClick: function() {
-                  updWO(wo.id, function(w) { w.status = "BEKLEMEYE_ALINDI"; return w; });
-                  addAuditLog && addAuditLog({ user_id: user.id, user_name: user.name, role: "leader", action: "Beklemeye Alındı", entity_type: "wo", entity_id: wo.id, detail: wo.id + " beklemeye alındı" });
-                }
-              }, "⏸ Beklet"),
-              wo.status === "BEKLEMEYE_ALINDI" && React.createElement("button", {
-                className: "btn", style: { background: "#1565c0", color: "#fff", fontWeight: 700, fontSize: 11, padding: "8px 16px" },
-                onClick: function() { updWO(wo.id, function(w) { w.status = "DEVAM_EDİYOR"; return w; }); }
-              }, "▶ Devam Et"),
-              // BAŞKASINA ATA — her durumda
-              React.createElement("select", {
-                className: "form-input", style: { fontSize: 11, padding: "6px 8px" }, defaultValue: "",
-                onChange: function(e) {
-                  if (!e.target.value) return;
-                  var newTech = (data.users || []).find(function(u) { return u.id === e.target.value; });
-                  if (!window.confirm(wo.id + " işini " + (newTech ? newTech.name : "") + " kişisine devretmek istiyor musunuz?")) { e.target.value = ""; return; }
-                  updWO(wo.id, function(w) { w.assigned = e.target.value; w.status = "BEKLEMEDE"; w.started_at = null; return w; });
-                  addAuditLog && addAuditLog({ user_id: user.id, user_name: user.name, role: "leader", action: "İş Devredildi", entity_type: "wo", entity_id: wo.id, detail: wo.id + " → " + (newTech ? newTech.name : "") });
-                  e.target.value = "";
-                }
-              },
-                React.createElement("option", { value: "" }, "🔄 Başkasına Ata..."),
-                otherTechs.map(function(t) { return React.createElement("option", { key: t.id, value: t.id }, t.name); })
-              )
-            )
-          )
-        );
-      })
-    );
+    // Lider, teknisyen süreçlerinin AYNISINI kullanır (Tespit Gir, Başla, Tamamla, Beklet, Devam)
+    return React.createElement(TechPanel, {
+      data: data, page: "my", updWO: updWO, updMold: updMold,
+      addWO: addWO, openMold: openMold, user: user
+    });
   }
   
   if (page === "tvmode") { return React.createElement(TVModePage, { data: data }); }
@@ -14906,6 +14842,44 @@ function SysAdminPage(_ref) {
   var pctColor = pct>80?"#c62828":pct>60?"#e65100":"#1a6b3c";
 
   return React.createElement("div", {className:"anim"},
+
+    // ── SABİT KULLANICI LİSTESİ ──
+    React.createElement("div", {className:"card", style:{marginBottom:16, borderLeft:"4px solid #7b1fa2"}},
+      React.createElement("div", {className:"section-title", style:{marginBottom:8}}, "👥 Kullanıcı Listesi Yönetimi"),
+      React.createElement("p", {style:{fontSize:12, color:"#6b7fa3", marginBottom:14}},
+        "Sabit personel listesini yükleyin. Sistemde eksik olan kullanıcılar otomatik eklenir. Bu, kod güncellemelerinden bağımsız çalışır."),
+      React.createElement("div", {style:{display:"flex", gap:10, flexWrap:"wrap"}},
+        React.createElement("button", {
+          className:"btn", style:{background:"#1a6b3c", color:"#fff", fontWeight:700, padding:"10px 18px"},
+          onClick: function() {
+            if(!window.confirm("Eksik kullanıcılar sabit listeden eklenecek. Mevcut kullanıcılara dokunulmaz. Devam?")) return;
+            fetch("/api/users/reset-seed", {
+              method:"POST", headers: apiHeaders(), body: JSON.stringify({mode:"merge"})
+            }).then(function(r){return r.json();}).then(function(res){
+              if(res.ok){
+                alert("✅ "+res.added+" yeni kullanıcı eklendi.\nToplam: "+res.total+" kullanıcı.\n\nSayfa yenilenecek.");
+                setTimeout(function(){ window.location.reload(); }, 500);
+              } else { alert("❌ Hata: "+(res.error||"Bilinmeyen")); }
+            }).catch(function(){ alert("❌ Sunucuya ulaşılamadı"); });
+          }
+        }, "➕ Eksik Kullanıcıları Ekle"),
+        React.createElement("button", {
+          className:"btn", style:{background:"#c62828", color:"#fff", fontWeight:700, padding:"10px 18px"},
+          onClick: function() {
+            if(!window.confirm("⚠️ DİKKAT: TÜM kullanıcılar silinip sabit liste ile değiştirilecek!\n\nManuel eklediğiniz kullanıcılar KAYBOLUR.\n\nEmin misiniz?")) return;
+            if(!window.confirm("Son onay: Tüm kullanıcı listesi sıfırlanacak. Devam edilsin mi?")) return;
+            fetch("/api/users/reset-seed", {
+              method:"POST", headers: apiHeaders(), body: JSON.stringify({mode:"replace"})
+            }).then(function(r){return r.json();}).then(function(res){
+              if(res.ok){
+                alert("✅ Kullanıcı listesi sıfırlandı.\nToplam: "+res.total+" kullanıcı.\n\nSayfa yenilenecek.");
+                setTimeout(function(){ window.location.reload(); }, 500);
+              } else { alert("❌ Hata: "+(res.error||"Bilinmeyen")); }
+            }).catch(function(){ alert("❌ Sunucuya ulaşılamadı"); });
+          }
+        }, "🔄 Tümünü Sıfırla ve Yükle")
+      )
+    ),
 
     // ── DEPOLAMA DURUMU ──
     React.createElement("div", {className:"card", style:{marginBottom:16}},

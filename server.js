@@ -1,6 +1,27 @@
 "use strict";
 const express     = require("express");
 const bcrypt      = require("bcryptjs");
+
+const SEED_USERS = () => [
+  { id:"U001", name:"Admin Yönetici", role:"admin", username:"admin", password_hash: bcrypt.hashSync("admin123",10), active:true },
+  { id:"U002", name:"Uğur Bükücü", role:"admin", username:"ugur.bukucu", password_hash: bcrypt.hashSync("1234",10), active:true },
+  { id:"U003", name:"Ersin Donat", role:"leader", username:"ersin.donat", password_hash: bcrypt.hashSync("1234",10), active:true },
+  { id:"U004", name:"İbrahim Kaya", role:"tech", username:"ibrahim.kaya", password_hash: bcrypt.hashSync("1234",10), active:true },
+  { id:"U005", name:"Bilal Aslan", role:"tech", username:"bilal.aslan", password_hash: bcrypt.hashSync("1234",10), active:true },
+  { id:"U006", name:"Doğan Tor", role:"tech", username:"dogan.tor", password_hash: bcrypt.hashSync("1234",10), active:true },
+  { id:"U007", name:"Yusuf Şen", role:"tech", username:"yusuf.sen", password_hash: bcrypt.hashSync("1234",10), active:true },
+  { id:"U008", name:"Hamdi Çakır", role:"tech", username:"hamdi.cakir", password_hash: bcrypt.hashSync("1234",10), active:true },
+  { id:"U009", name:"Ferhat Koçuk", role:"op", username:"ferhat.kocuk", password_hash: bcrypt.hashSync("1234",10), active:true },
+  { id:"U010", name:"Mehmet Kahraman", role:"op", username:"mehmet.kahraman", password_hash: bcrypt.hashSync("1234",10), active:true },
+  { id:"U011", name:"Mehmet Yılmaz", role:"op", username:"mehmet.yilmaz", password_hash: bcrypt.hashSync("1234",10), active:true },
+  { id:"U012", name:"İsmail Açıkgöz", role:"op", username:"ismail.acikgoz", password_hash: bcrypt.hashSync("1234",10), active:true },
+  { id:"U013", name:"Murat Akgün", role:"op", username:"murat.akgun", password_hash: bcrypt.hashSync("1234",10), active:true },
+  { id:"U014", name:"Gökhan Koçak", role:"op", username:"gokhan.kocak", password_hash: bcrypt.hashSync("1234",10), active:true },
+  { id:"U015", name:"Cüneyt Dincel", role:"op", username:"cuneyt.dincel", password_hash: bcrypt.hashSync("1234",10), active:true },
+  { id:"U016", name:"Gökhan Karadeniz", role:"op", username:"gokhan.karadeniz", password_hash: bcrypt.hashSync("1234",10), active:true },
+  { id:"U017", name:"Muhammed Akyol", role:"op", username:"muhammed.akyol", password_hash: bcrypt.hashSync("1234",10), active:true }
+];
+
 const jwt         = require("jsonwebtoken");
 const path        = require("path");
 const fs          = require("fs");
@@ -103,15 +124,7 @@ async function initServer() {
 function ensureDemoUsers() {
 // Demo kullanıcılar yoksa oluştur
 if (!DB.users || DB.users.length === 0) {
-  DB.users = [
-    { id:"U001", name:"Admin Yönetici", role:"admin",   username:"admin",   password_hash: bcrypt.hashSync("admin123",10), active:true },
-    { id:"U002", name:"Mehmet Lider",   role:"leader",  username:"leader1", password_hash: bcrypt.hashSync("1234",10),     active:true },
-    { id:"U003", name:"Ali Teknisyen",  role:"tech",    username:"tech1",   password_hash: bcrypt.hashSync("1234",10),     active:true },
-    { id:"U004", name:"Veli Teknisyen", role:"tech",    username:"tech2",   password_hash: bcrypt.hashSync("1234",10),     active:true },
-    { id:"U005", name:"Kemal Teknisyen",role:"tech",    username:"tech3",   password_hash: bcrypt.hashSync("1234",10),     active:true },
-    { id:"U006", name:"Hasan Operatör", role:"op",      username:"op1",     password_hash: bcrypt.hashSync("1234",10),     active:true },
-    { id:"U007", name:"İbrahim Oper.",  role:"op",      username:"op2",     password_hash: bcrypt.hashSync("1234",10),     active:true },
-  ];
+  DB.users = SEED_USERS();
   DB.auditLog = [];
   saveDB();
   console.log("✅ Demo kullanıcılar oluşturuldu  →  admin / admin123");
@@ -349,6 +362,47 @@ app.get("/api/tv", (req, res) => {
     }),
     ts: new Date().toISOString()
   });
+});
+
+// POST /api/users/reset-seed — Sabit kullanıcı listesini yeniden yükle (admin)
+app.post("/api/users/reset-seed", auth, (req, res) => {
+  if (req.user.role !== "admin") return res.status(403).json({ error: "Yetkisiz" });
+  const mode = req.body.mode || "merge"; // "merge" = eksikleri ekle, "replace" = tümünü değiştir
+  const seed = SEED_USERS();
+  
+  if (mode === "replace") {
+    // Tüm kullanıcıları sabit listeyle değiştir
+    DB.users = seed;
+  } else {
+    // MERGE: mevcut olmayan kullanıcıları ekle (username bazlı)
+    const existingUsernames = new Set(DB.users.map(u => u.username));
+    const existingIds = new Set(DB.users.map(u => u.id));
+    let added = 0;
+    for (const su of seed) {
+      if (!existingUsernames.has(su.username)) {
+        // ID çakışması varsa yeni ID ver
+        let newUser = { ...su };
+        if (existingIds.has(newUser.id)) {
+          let n = 100;
+          while (existingIds.has("U" + n)) n++;
+          newUser.id = "U" + n;
+        }
+        DB.users.push(newUser);
+        existingIds.add(newUser.id);
+        existingUsernames.add(newUser.username);
+        added++;
+      }
+    }
+    addAudit(req.user.id, req.user.name, req.user.role, "Kullanıcılar Yüklendi", "user", "seed",
+      `${added} yeni kullanıcı eklendi (merge)`);
+    saveDB();
+    return res.json({ ok: true, mode: "merge", added: added, total: DB.users.length });
+  }
+  
+  addAudit(req.user.id, req.user.name, req.user.role, "Kullanıcılar Sıfırlandı", "user", "seed",
+    `Tüm kullanıcılar sabit listeyle değiştirildi (${seed.length} kişi)`);
+  saveDB();
+  res.json({ ok: true, mode: "replace", total: DB.users.length });
 });
 
 // POST /api/workorders — Doğrudan iş emri oluştur (arıza bildirimi)
