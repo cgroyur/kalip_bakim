@@ -2,6 +2,12 @@
 const express     = require("express");
 const bcrypt      = require("bcryptjs");
 
+// Türkiye saati (UTC+3) — client nowStr() ile TUTARLI olması için
+function nowStrTR() {
+  var d = new Date(Date.now() + 3 * 3600 * 1000); // UTC+3
+  return d.toISOString().replace("T", " ").slice(0, 19);
+}
+
 const SEED_USERS = () => [
   { id:"U001", name:"Admin Yönetici", role:"admin", username:"admin", password_hash: bcrypt.hashSync("admin123",10), active:true },
   { id:"U002", name:"Uğur Bükücü", role:"admin", username:"ugur.bukucu", password_hash: bcrypt.hashSync("1234",10), active:true },
@@ -423,7 +429,7 @@ app.post("/api/workorders", auth, (req, res) => {
   // Varsayılan alanlar
   wo.status = wo.status || "BEKLEMEDE";
   wo.assigned = wo.assigned || null;
-  wo.created_at = wo.created_at || new Date().toISOString().replace("T"," ").slice(0,19);
+  wo.created_at = wo.created_at || nowStrTR();
   wo.reported_by = wo.reported_by || req.user.id;
   
   // State'e ekle
@@ -451,7 +457,7 @@ app.post("/api/tv/claim", auth, (req, res) => {
   if (wo.assigned && wo.status !== "BEKLEMEDE") return res.status(400).json({ error: "Bu iş zaten atanmış" });
   wo.assigned = req.user.id;
   wo.status = "DEVAM_EDİYOR";
-  wo.started_at = new Date().toISOString().replace("T"," ").slice(0,19);
+  wo.started_at = nowStrTR();
   wo.updated_at = new Date().toISOString();
   addAudit(req.user.id, req.user.name, req.user.role, "İş Üstlenildi (TV)", "wo", wo_id,
     req.user.name + " " + wo_id + " iş emrini TV modundan üstlendi");
