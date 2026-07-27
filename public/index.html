@@ -273,7 +273,7 @@ var fmtMin = function fmtMin(m) {
 var calcMin = function calcMin(a, b) {
   if (!a || !b) return 0;
   try {
-    var d = Math.round((new Date(b.replace(" ", "T")) - new Date(a.replace(" ", "T"))) / 60000);
+    var d = Math.round((_parseLocalDate(b) - _parseLocalDate(a)) / 60000);
     return d < 0 ? 0 : d;
   } catch (_unused2) {
     return 0;
@@ -15510,10 +15510,25 @@ function TVModePage(_ref) {
 ═══════════════════════════════════════════════ */
 
 // Yardımcı: dakika hesapla
+function _parseLocalDate(str) {
+  if (!str) return null;
+  var s = String(str).trim();
+  // UTC ISO (Z ile biter): gerçek UTC olarak parse et — new Date doğru mutlak zamanı verir
+  if (/Z$/.test(s) || /[+\-]\d{2}:\d{2}$/.test(s)) {
+    return new Date(s);
+  }
+  // Yerel format ("2026-07-26 16:00" veya "T" ile): yerel saat olarak parse et
+  var clean = s.replace("T", " ").replace(/\.\d+.*$/, "").trim();
+  var parts = clean.split(/[ :]/);
+  if (parts.length < 3) { var d0 = new Date(s); return isNaN(d0) ? null : d0; }
+  var ymd = parts[0].split("-");
+  return new Date(+ymd[0], +ymd[1] - 1, +ymd[2], +(parts[1] || 0), +(parts[2] || 0), +(parts[3] || 0));
+}
 function _rptMin(start, end) {
   if (!start || !end) return 0;
-  var s = new Date(start.replace(" ", "T"));
-  var e = new Date(end.replace(" ", "T"));
+  var s = _parseLocalDate(start);
+  var e = _parseLocalDate(end);
+  if (!s || !e) return 0;
   var d = (e - s) / 60000;
   return d > 0 ? d : 0;
 }
