@@ -457,6 +457,7 @@ app.post("/api/tv/claim", auth, (req, res) => {
   if (wo.assigned && wo.status !== "BEKLEMEDE") return res.status(400).json({ error: "Bu iş zaten atanmış" });
   wo.assigned = req.user.id;
   wo.status = "DEVAM_EDİYOR";
+  wo.assigned_at = wo.assigned_at || nowStrTR();
   wo.started_at = nowStrTR();
   wo.updated_at = new Date().toISOString();
   addAudit(req.user.id, req.user.name, req.user.role, "İş Üstlenildi (TV)", "wo", wo_id,
