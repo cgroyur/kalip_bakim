@@ -773,6 +773,10 @@ function App() {
       d.wos = d.wos.map(function (w) {
         if (w.id !== id) return w;
         var updated = fn(_objectSpread({}, w));
+        // Atama yapıldıysa assigned_at damgala
+        if (updated.assigned && updated.assigned !== w.assigned) {
+          updated.assigned_at = nowStr();
+        }
         updated.updated_at = new Date().toISOString(); // Çakışma çözümü için
         return updated;
       });
@@ -1201,6 +1205,14 @@ function Sidebar(_ref2) {
       id: "matrix",
       ico: "👥",
       l: "Teknisyen Matrisi"
+    }, {
+      id: "mtable",
+      ico: "📅",
+      l: "Müdahale Tablosu"
+    }, {
+      id: "mtable",
+      ico: "📅",
+      l: "Müdahale Tablosu"
     }, {
       id: "create_wo",
       ico: "➕",
@@ -3566,7 +3578,10 @@ function AdminPanel(_ref19) {
       data: data
     });
   }
-      if (page === "matrix") {
+      if (page === "mtable") {
+    return React.createElement(InterventionTable, { data: data, updWO: updWO, user: user });
+  }
+  if (page === "matrix") {
     var _techsOnly = (data.users || []).filter(function(u) { return u.role === "tech"; });
     var _matrix = _techsOnly.map(function(t) {
       return _objectSpread(_objectSpread({}, t), {}, {
@@ -3625,7 +3640,7 @@ function AdminPanel(_ref19) {
     );
   }
   if (page === "pool") {
-    var _poolWos = (data.wos||[]).filter(function(w){ return w.status==="BEKLEMEDE" && !w.assigned; });
+    var _poolWos = sortByNewest((data.wos||[]).filter(function(w){ return w.status==="BEKLEMEDE" && !w.assigned; }));
     return React.createElement("div",{className:"anim"},
       React.createElement("h2",{style:{fontSize:16,fontWeight:800,color:"#0f2044",marginBottom:14}},"📥 Arıza Havuzu ("+_poolWos.length+")"),
       _poolWos.length===0 && React.createElement("div",{className:"card",style:{textAlign:"center",padding:40,color:"#6b7fa3"}},"Havuzda bekleyen iş yok 👍"),
@@ -3637,7 +3652,8 @@ function AdminPanel(_ref19) {
             React.createElement("div",{style:{flex:1}},
               React.createElement("div",{style:{fontWeight:800,fontSize:14,color:"#0f2044"}},wo.id," ",React.createElement("span",{style:{fontSize:10,color:wo.priority==="KRİTİK"?"#c62828":"#6b7fa3"}},wo.priority)),
               React.createElement("div",{style:{fontSize:12,color:"#2d3748",marginTop:2}},wo.description||""),
-              React.createElement("div",{style:{fontSize:10,color:"#6b7fa3",marginTop:2}},wo.mold_id+(mold?" — "+(mold.part_name||"").slice(0,30):""))
+              React.createElement("div",{style:{fontSize:10,color:"#6b7fa3",marginTop:2}},wo.mold_id+(mold?" — "+(mold.part_name||"").slice(0,30):"")+" · "+(wo.created_at||"").slice(5,16)),
+              (function(){ var age=unassignedAgeMin(wo); return age>=60 && React.createElement("div",{style:{fontSize:10,color:"#fff",background:"#c62828",padding:"2px 8px",borderRadius:4,marginTop:4,display:"inline-block",fontWeight:700}},"⚠ "+(age>=120?Math.floor(age/60)+" saattir":age+" dk'dır")+" atanmadı!"); })()
             ),
             React.createElement("select",{className:"form-input",style:{width:180,fontSize:11},defaultValue:"",onChange:function(e){
               if(!e.target.value)return;
@@ -4328,6 +4344,9 @@ function LeaderPanel(_ref24) {
   }
   
   if (page === "tvmode") { return React.createElement(TVModePage, { data: data }); }
+  if (page === "mtable") {
+    return React.createElement(InterventionTable, { data: data, updWO: updWO, user: user });
+  }
   if (page === "matrix") {
     return /*#__PURE__*/React.createElement("div", {
       className: "anim",
@@ -15614,6 +15633,96 @@ function RptKPI(_ref) {
 
 // ANA RAPOR SAYFASI
 
+
+
+// MÜDAHALE TAKİP TABLOSU (Mold Management Table)
+function InterventionTable(_ref) {
+  var data = _ref.data, updWO = _ref.updWO, user = _ref.user;
+  var _ft = useState("ALL"), _ft2 = _slicedToArray(_ft, 2), fltStatus = _ft2[0], setFltStatus = _ft2[1];
+  var wos = sortByNewest(data.wos || []);
+  var users = data.users || [];
+  var molds = data.molds || [];
+  if (fltStatus !== "ALL") wos = wos.filter(function(w) { return w.status === fltStatus; });
+  var statusColors = { "BEKLEMEDE": "#f9a825", "DEVAM_EDİYOR": "#1565c0", "BEKLEMEYE_ALINDI": "#e65100", "KAPATILDI": "#1a6b3c" };
+  var statusLabels = { "BEKLEMEDE": "Beklemede", "DEVAM_EDİYOR": "Devam Ediyor", "BEKLEMEYE_ALINDI": "Beklemeye Alındı", "KAPATILDI": "Kapatıldı" };
+  var fmtD = function(s) { return s ? String(s).slice(0, 16).replace("T", " ") : "—"; };
+  var thS = { padding: "10px 8px", textAlign: "left", fontSize: 10, fontWeight: 800, color: "#fff", background: "#0f2044", whiteSpace: "nowrap", position: "sticky", top: 0 };
+  var tdS = { padding: "8px", fontSize: 11, borderBottom: "1px solid #eef2f7", verticalAlign: "top" };
+  return React.createElement("div", { className: "anim" },
+    React.createElement("h2", { style: { fontSize: 18, fontWeight: 800, color: "#0f2044", marginBottom: 6 } }, "📅 Müdahale Takip Tablosu"),
+    React.createElement("p", { style: { fontSize: 12, color: "#6b7fa3", marginBottom: 12 } }, "Tüm iş emirlerinin süreç takibi — planlanan bitiş tarihini tablodan girebilirsiniz"),
+    // Durum filtresi
+    React.createElement("div", { style: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 } },
+      [["ALL", "Tümü"], ["BEKLEMEDE", "Beklemede"], ["DEVAM_EDİYOR", "Devam Ediyor"], ["BEKLEMEYE_ALINDI", "Beklemeye Alındı"], ["KAPATILDI", "Kapatıldı"]].map(function(f) {
+        var active = fltStatus === f[0];
+        return React.createElement("button", {
+          key: f[0], onClick: function() { setFltStatus(f[0]); },
+          style: { padding: "7px 14px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer",
+            border: active ? "2px solid #1565c0" : "1px solid #e0e5eb",
+            background: active ? "#1565c0" : "#fff", color: active ? "#fff" : "#4a5568" }
+        }, f[1] + " (" + (f[0] === "ALL" ? (data.wos || []).length : (data.wos || []).filter(function(w) { return w.status === f[0]; }).length) + ")");
+      })
+    ),
+    React.createElement("div", { className: "card", style: { padding: 0, overflow: "auto", maxHeight: "70vh" } },
+      React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", minWidth: 1100 } },
+        React.createElement("thead", null, React.createElement("tr", null,
+          ["İş Emri", "Kalıp", "Durum", "Öncelik", "Açıklama / Arıza Nedeni", "Talep Tarihi", "Atama Tarihi", "Başlama", "Planlanan Bitiş", "Gerçek Bitiş", "Atanan", "Talep Eden"].map(function(h) {
+            return React.createElement("th", { key: h, style: thS }, h);
+          })
+        )),
+        React.createElement("tbody", null, wos.map(function(w) {
+          var assignedUser = users.find(function(u) { return u.id === w.assigned; });
+          var reporter = users.find(function(u) { return u.id === w.reported_by; });
+          var age = (w.status === "BEKLEMEDE" && !w.assigned) ? unassignedAgeMin(w) : 0;
+          var overdue = w.planned_end && w.status !== "KAPATILDI" && String(w.planned_end) < nowStr().slice(0, 16);
+          return React.createElement("tr", { key: w.id, style: { background: age >= 60 ? "#fff5f5" : overdue ? "#fff8f0" : "#fff" } },
+            React.createElement("td", { style: Object.assign({}, tdS, { fontWeight: 800, color: "#0f2044", whiteSpace: "nowrap" }) }, w.id,
+              age >= 60 && React.createElement("div", { style: { fontSize: 9, color: "#c62828", fontWeight: 700 } }, "⚠ " + (age >= 120 ? Math.floor(age / 60) + " saattir" : age + " dk") + " atanmadı")),
+            React.createElement("td", { style: Object.assign({}, tdS, { whiteSpace: "nowrap", fontWeight: 600 }) }, w.mold_id || "—"),
+            React.createElement("td", { style: tdS }, React.createElement("span", { style: { background: statusColors[w.status] || "#999", color: "#fff", padding: "3px 8px", borderRadius: 5, fontSize: 9, fontWeight: 800, whiteSpace: "nowrap" } }, statusLabels[w.status] || w.status)),
+            React.createElement("td", { style: tdS }, React.createElement("span", { style: { color: w.priority === "KRİTİK" ? "#c62828" : w.priority === "YÜKSEK" ? "#e65100" : "#1565c0", fontWeight: 700, fontSize: 10 } }, w.priority || "—")),
+            React.createElement("td", { style: Object.assign({}, tdS, { maxWidth: 220 }) }, (w.description || "").slice(0, 80),
+              w.wait_reason && React.createElement("div", { style: { fontSize: 9, color: "#7b1fa2", marginTop: 2 } }, "⏸ " + (w.wait_reason || "") + (w.wait_detail ? ": " + w.wait_detail : ""))),
+            React.createElement("td", { style: Object.assign({}, tdS, { whiteSpace: "nowrap", color: "#4a5568" }) }, fmtD(w.created_at)),
+            React.createElement("td", { style: Object.assign({}, tdS, { whiteSpace: "nowrap", color: "#4a5568" }) }, fmtD(w.assigned_at)),
+            React.createElement("td", { style: Object.assign({}, tdS, { whiteSpace: "nowrap", color: "#4a5568" }) }, fmtD(w.started_at)),
+            // Planlanan bitiş — GİRİLEBİLİR
+            React.createElement("td", { style: tdS },
+              React.createElement("input", {
+                type: "datetime-local", defaultValue: w.planned_end || "",
+                style: { fontSize: 10, padding: "4px 6px", border: overdue ? "2px solid #e65100" : "1px solid #dde3ea", borderRadius: 5, width: 150 },
+                onBlur: function(e) {
+                  var v = e.target.value;
+                  if (v !== (w.planned_end || "")) {
+                    updWO(w.id, function(x) { x.planned_end = v; return x; });
+                  }
+                }
+              }),
+              overdue && React.createElement("div", { style: { fontSize: 9, color: "#e65100", fontWeight: 700, marginTop: 2 } }, "⚠ Süre aşıldı!")),
+            React.createElement("td", { style: Object.assign({}, tdS, { whiteSpace: "nowrap", color: w.closed_at ? "#1a6b3c" : "#9aa5b4", fontWeight: w.closed_at ? 700 : 400 }) }, fmtD(w.closed_at)),
+            React.createElement("td", { style: Object.assign({}, tdS, { whiteSpace: "nowrap" }) }, assignedUser ? assignedUser.name : (w.assigned || "—")),
+            React.createElement("td", { style: Object.assign({}, tdS, { whiteSpace: "nowrap", color: "#6b7fa3" }) }, reporter ? reporter.name : (w.reported_by || "—"))
+          );
+        }))
+      ),
+      wos.length === 0 && React.createElement("div", { style: { padding: 40, textAlign: "center", color: "#9aa5b4" } }, "Kayıt yok")
+    )
+  );
+}
+
+// Yeni → eski sıralama (created_at bazlı)
+function sortByNewest(wos) {
+  return (wos || []).slice().sort(function(a, b) {
+    return String(b.created_at || "").localeCompare(String(a.created_at || ""));
+  });
+}
+// Atanmamış iş yaşı (dakika) — uyarı için
+function unassignedAgeMin(wo) {
+  if (!wo.created_at) return 0;
+  var c = _parseLocalDate(wo.created_at);
+  if (!c) return 0;
+  return Math.round((Date.now() - c.getTime()) / 60000);
+}
 // İş ilerleme durumu — aşama + yüzde
 function WOProgress(_ref) {
   var wo = _ref.wo;
