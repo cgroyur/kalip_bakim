@@ -417,7 +417,49 @@ var WAIT_R = [{
   c: "DIGER",
   l: "Diğer"
 }];
-var PM_CL = ["Parting line temizliği (lint-free, uygun solvent)", "Hava kanalları ve ventler temizlendi", "İtici pinler kontrol ve yağlandı", "Soğutma kanalları temizlendi (akış test)", "Sıcak yolluk rezistansları ölçüldü", "Çelik yüzeyler pas önleyici ile koruma", "Kılavuz pinler ve burçlar kontrol/yağlandı", "O-ring ve sızdırmazlık elemanları kontrol", "Kalıp kapanma/açılma hareketi gözlemlendi", "Kilitleme plakaları ve bağlantılar kontrol", "Son test baskısı yapıldı ve ürün onaylandı"];
+var PM_CHECKLIST = [
+  // 1. SEVİYE — HAFTALIK
+  { code:"101", lvl:1, task:"Ayırma hattının ve hareketli elemanların kontrolü", cat:"Parça Kalitesi", period:"1/hafta" },
+  { code:"102", lvl:1, task:"Hareketli elemanların (itici pimler, kolonlar, sürgüler, kaldırıcılar) aşınma kontrolü", cat:"Ekipman Aşınması", period:"1/hafta" },
+  { code:"103", lvl:1, task:"Doku aşınmasının ve parlaklık seviyesinin kontrolü", cat:"Parça Kalitesi", period:"1/hafta" },
+  { code:"104", lvl:1, task:"Sıcak yolluk sızdırmazlığının görsel kontrolü", cat:"Ekipman Aşınması", period:"1/hafta" },
+  { code:"105", lvl:1, task:"Yolluk, enjeksiyon giriş noktaları ve memenin görsel kontrolü", cat:"Proses Kalitesi", period:"1/hafta" },
+  { code:"106", lvl:1, task:"Kalıplama alanlarının temizliği (sabit taraf, hareketli taraf, sürgüler)", cat:"Parça Kalitesi", period:"1/hafta" },
+  { code:"107", lvl:1, task:"Ayırma hatlarının temizlenmesi ve kontrolü", cat:"Parça Kalitesi", period:"1/hafta" },
+  { code:"108", lvl:1, task:"Hareketli alanların temizlenmesi ve greslenmesi", cat:"Ekipman Aşınması", period:"1/hafta" },
+  // 2. SEVİYE — ÜÇ AYLIK
+  { code:"109", lvl:2, task:"Tüm kaldırma zincir/halatlarının kontrolü", cat:"Güvenlik", period:"4/yıl" },
+  { code:"110", lvl:2, task:"Tüm kaldırma kancalı cıvataların (göz cıvata) kontrolü", cat:"Güvenlik", period:"4/yıl" },
+  { code:"111", lvl:2, task:"Tüm soğutma hatlarının kontrolü (sabit taraf ve hareketli taraf)", cat:"Parça Kalitesi", period:"4/yıl" },
+  { code:"112", lvl:2, task:"Tüm soğutma hatlarının kontrolü (kaldırıcılar ve sürgüler)", cat:"Parça Kalitesi", period:"4/yıl" },
+  { code:"113", lvl:2, task:"Kablolamanın kontrolü (sıcak yolluk, termokupl ve switchler)", cat:"Ekipman Aşınması", period:"4/yıl" },
+  { code:"114", lvl:2, task:"Hidrolik hatlarının kontrolü (silindirler, bağlantı elemanları)", cat:"Proses Kalitesi", period:"4/yıl" },
+  { code:"115", lvl:2, task:"Tüm koruyucuların (muhafazaların) kontrolü", cat:"Güvenlik", period:"4/yıl" },
+  { code:"116", lvl:2, task:"Tüm vidaların sıkılık kontrolü", cat:"Ekipman Aşınması", period:"4/yıl" },
+  // 3. SEVİYE — 6 AYLIK
+  { code:"117", lvl:3, task:"Kalıbın sökülüp tüm parçalarının detaylı incelenmesi", cat:"Ekipman Aşınması", period:"2/yıl" },
+  { code:"118", lvl:3, task:"Hasarlı vidaların kontrol edilmesi ve değiştirilmesi", cat:"Ekipman Aşınması", period:"2/yıl" },
+  { code:"119", lvl:3, task:"Tüm soğutma hatlarının sökülüp kontrol edilmesi ve temizlenmesi", cat:"Parça Kalitesi", period:"2/yıl" },
+  { code:"120", lvl:3, task:"Hareketli elemanların sökülüp aşınma kontrolünün yapılması ve greslenmesi", cat:"Ekipman Aşınması", period:"2/yıl" },
+  { code:"121", lvl:3, task:"Tüm o-ringlerin (hidrolik silindirler, sabit/hareketli taraf, sürgüler, kaldırıcılar) sökülüp kontrol edilmesi", cat:"Ekipman Aşınması", period:"2/yıl" },
+  { code:"122", lvl:3, task:"Kritik kavite ve göbek ölçülerinin ana teknik resimlere göre kontrolü", cat:"Parça Kalitesi", period:"2/yıl" },
+  { code:"123", lvl:3, task:"Kalıp yüzey dokusu ve parlaklık seviyesinin incelenip gerekirse yenilenmesi", cat:"Parça Kalitesi", period:"2/yıl" },
+  { code:"124", lvl:3, task:"Sıcak yolluk sıcaklık kontrol sisteminin kontrolü ve kalibrasyonu", cat:"Proses Kalitesi", period:"2/yıl" },
+  { code:"125", lvl:3, task:"Tam elektriksel güvenlik kontrolü (topraklama, yalıtım direnci, elektrik kütlesi)", cat:"Güvenlik", period:"2/yıl" },
+  { code:"126", lvl:3, task:"Kaldırma/taşıma ekipmanları ve kaldırma noktalarının sertifikasyon kontrolü", cat:"Güvenlik", period:"2/yıl" },
+  { code:"127", lvl:3, task:"Bakım geçmişi kaydının ve yaşam döngüsü dokümantasyonunun güncellenmesi", cat:"Proses Kalitesi", period:"2/yıl" }
+];
+var PM_LEVELS = {
+  1: { name:"1. Seviye — Haftalık", color:"#1a6b3c", ico:"📅" },
+  2: { name:"2. Seviye — Üç Aylık", color:"#1565c0", ico:"🗓" },
+  3: { name:"3. Seviye — 6 Aylık", color:"#7b1fa2", ico:"🔧" }
+};
+var PM_CAT_COLORS = {
+  "Parça Kalitesi":"#1565c0", "Ekipman Aşınması":"#e65100",
+  "Proses Kalitesi":"#00838f", "Güvenlik":"#c62828"
+};
+// Geriye dönük uyumluluk: mevcut kod PM_CL bekliyor (etiket listesi)
+var PM_CL = PM_CHECKLIST.map(function(x) { return x.code + " - " + x.task; });
 var STATUS_DOT = {
   Kullanılabilir: "#1a6b3c",
   Bakımda: "#e65100",
@@ -2024,29 +2066,46 @@ function MoldHistoryModal(_ref3) {
         gridTemplateColumns: "1fr 1fr",
         gap: 12
       }
-    }, /*#__PURE__*/React.createElement("div", null, (wo.checklist_done || []).length > 0 && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    }, /*#__PURE__*/React.createElement("div", null, (wo.type === "PM" || (wo.checklist_done || []).length > 0) && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 10,
         fontWeight: 700,
         color: "#006064",
         marginBottom: 5
       }
-    }, "\u2705 Tamamlanan Kontroller (", wo.checklist_done.length, ")"), wo.checklist_done.map(function (c, i) {
+    }, "\u2705 Yap\u0131lan Kontroller (", wo.checklist_done.length, ")"), wo.checklist_done.map(function (c, i) {
       return /*#__PURE__*/React.createElement("div", {
         key: i,
         style: {
           fontSize: 10,
-          color: "#2d3748",
+          color: "#1a6b3c",
           padding: "2px 0",
           display: "flex",
           gap: 5
         }
       }, /*#__PURE__*/React.createElement("span", {
         style: {
-          color: "#1a6b3c"
+          color: "#1a6b3c",
+          fontWeight: 800
         }
       }, "\u2713"), c);
-    }))), /*#__PURE__*/React.createElement("div", {
+    }), (function() {
+      var notDone = PM_CL.filter(function(x) { return (wo.checklist_done || []).indexOf(x) < 0; });
+      if (notDone.length === 0) return /*#__PURE__*/React.createElement("div", {
+        style: { fontSize:10, color:"#1a6b3c", fontWeight:700, marginTop:8, background:"#f0f9f0", padding:"4px 8px", borderRadius:5 }
+      }, "\u2705 T\u00FCm kontroller tamamland\u0131!");
+      return /*#__PURE__*/React.createElement("div", { style:{ marginTop:10 } },
+        /*#__PURE__*/React.createElement("div", {
+          style: { fontSize:10, fontWeight:700, color:"#c62828", marginBottom:5 }
+        }, "\u274C Yap\u0131lmayan Kontroller (" + notDone.length + ")"),
+        notDone.map(function(c, i) {
+          return /*#__PURE__*/React.createElement("div", {
+            key: "nd"+i,
+            style: { fontSize:10, color:"#c62828", padding:"2px 0", display:"flex", gap:5 }
+          }, /*#__PURE__*/React.createElement("span", { style:{ color:"#c62828", fontWeight:800 } }, "\u2717"), c);
+        })
+      );
+    })())), /*#__PURE__*/React.createElement("div", {
       style: {
         fontSize: 11
       }
@@ -3433,7 +3492,15 @@ function AdminPanel(_ref19) {
           color: "#0f2044",
           fontSize: 11
         }
-      }, wo.id)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
+      }, wo.id), /*#__PURE__*/React.createElement("div", {
+        style: { fontSize: 9, color: "#9aa5b4", marginTop: 2, whiteSpace: "nowrap" }
+      }, "\uD83D\uDD50 " + String(wo.created_at || "").slice(0, 16)), (function() {
+        var age = (wo.status === "BEKLEMEDE" && !wo.assigned) ? unassignedAgeMin(wo) : 0;
+        if (age < 60) return null;
+        return /*#__PURE__*/React.createElement("div", {
+          style: { fontSize: 9, color: "#c62828", fontWeight: 700, marginTop: 1 }
+        }, "\u26A0 " + (age >= 120 ? Math.floor(age/60) + "s" : age + "dk") + " atanmad\u0131");
+      })()), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
         className: "tag ".concat(((_WO_TYPE_INFO$wo$type5 = WO_TYPE_INFO[wo.type]) === null || _WO_TYPE_INFO$wo$type5 === void 0 ? void 0 : _WO_TYPE_INFO$wo$type5.cls) || "tag-gray"),
         style: {
           fontSize: 9
@@ -4268,7 +4335,13 @@ function LeaderPanel(_ref24) {
           gap: 8,
           flexWrap: "wrap"
         }
-      }, /*#__PURE__*/React.createElement("span", null, wo.machine, " \xB7 ", wo.created_at), wo.active_reference && /*#__PURE__*/React.createElement("span", {
+      }, /*#__PURE__*/React.createElement("span", null, wo.machine, " \xB7 ", wo.created_at), (function() {
+        var age = unassignedAgeMin(wo);
+        if (age < 60) return null;
+        return /*#__PURE__*/React.createElement("span", {
+          style: { background:"#c62828", color:"#fff", padding:"2px 8px", borderRadius:4, fontWeight:800, fontSize:10 }
+        }, "\u26A0 " + (age >= 120 ? Math.floor(age/60) + " saattir" : age + " dk'd\u0131r") + " atanmad\u0131!");
+      })(), wo.active_reference && /*#__PURE__*/React.createElement("span", {
         style: {
           background: "#e3f2fd",
           color: "#1565c0",
@@ -5454,6 +5527,7 @@ function TechPanel(_ref27) {
     _useState80 = _slicedToArray(_useState79, 2),
     modal = _useState80[0],
     setModal = _useState80[1];
+  var _trf1 = useState(null), _trf2 = _slicedToArray(_trf1, 2), transferWO = _trf2[0], setTransferWO = _trf2[1];
   var _useState81 = useState(false),
     _useState82 = _slicedToArray(_useState81, 2),
     showRCA = _useState82[0],
@@ -5524,6 +5598,25 @@ function TechPanel(_ref27) {
         used_qty: 0
       });
     }));
+  };
+  var doTransfer = function doTransfer(wo, targetId, note) {
+    var ts = nowStr();
+    var target = (users || []).find(function(u) { return u.id === targetId; });
+    updWO(wo.id, function (w) {
+      var ints = (w.interventions || []).slice();
+      ints.push({ user: user.id, note: note, ts: ts, action: "devretti" });
+      return _objectSpread(_objectSpread({}, w), {}, {
+        assigned: targetId,
+        status: "BEKLEMEDE",
+        started_at: w.started_at || null,
+        interventions: ints,
+        actions: [].concat(_toConsumableArray(w.actions || []), [{
+          ts: ts, user: user.id, act: "Devredildi",
+          det: (target ? target.name : targetId) + " kişisine devredildi: " + note
+        }])
+      });
+    });
+    setTransferWO(null);
   };
   var startJob = function startJob(wo) {
     var ts = nowStr();
@@ -5806,7 +5899,11 @@ function TechPanel(_ref27) {
     });
     return /*#__PURE__*/React.createElement("div", {
       className: "anim"
-    }, /*#__PURE__*/React.createElement("div", {
+    }, transferWO && /*#__PURE__*/React.createElement(TransferModal, {
+      wo: transferWO, users: users, user: user,
+      onTransfer: function(targetId, note) { doTransfer(transferWO, targetId, note); },
+      onClose: function() { setTransferWO(null); }
+    }), /*#__PURE__*/React.createElement("div", {
       style: {
         display: "grid",
         gridTemplateColumns: "repeat(4,1fr)",
@@ -5890,7 +5987,14 @@ function TechPanel(_ref27) {
           onClick: function onClick() {
             return openModal(wo, "wait");
           }
-        }, "\u23F8 Bekle")].filter(Boolean)
+        }, "\u23F8 Bekle"), /*#__PURE__*/React.createElement("button", {
+          key: "tr",
+          className: "btn btn-sm",
+          style: { background: "#e65100", color: "#fff", fontWeight: 700 },
+          onClick: function onClick() {
+            setTransferWO(wo);
+          }
+        }, "\uD83D\uDD04 Devret")].filter(Boolean)
       });
     })), assigned.length === 0 && active.length === 0 && active.length === 0 && /*#__PURE__*/React.createElement("div", {
       style: {
@@ -6249,20 +6353,37 @@ function TechPanel(_ref27) {
         color: "#6b7fa3",
         marginBottom: 10
       }
-    }, "Tamamlanan ad\u0131mlar\u0131 i\u015Faretleyin (", checklist.length, "/", PM_CL.length, ")"), PM_CL.map(function (item, i) {
-      return /*#__PURE__*/React.createElement("div", {
-        key: i,
-        className: "cl-item".concat(checklist.includes(item) ? " chk" : "")
-      }, /*#__PURE__*/React.createElement("input", {
-        type: "checkbox",
-        className: "cl-cb",
-        checked: checklist.includes(item),
-        onChange: function onChange() {
-          return toggleCL(item);
-        }
-      }), /*#__PURE__*/React.createElement("span", {
-        className: "cl-text".concat(checklist.includes(item) ? " done" : "")
-      }, item));
+    }, "Tamamlanan ad\u0131mlar\u0131 i\u015Faretleyin (", checklist.length, "/", PM_CL.length, ")"), [1,2,3].map(function (lvl) {
+      var lvlItems = PM_CHECKLIST.filter(function(x) { return x.lvl === lvl; });
+      var lvlInfo = PM_LEVELS[lvl];
+      var doneCount = lvlItems.filter(function(x) { return checklist.indexOf(x.code + " - " + x.task) >= 0; }).length;
+      return /*#__PURE__*/React.createElement("div", { key: lvl, style: { marginBottom: 16 } },
+        /*#__PURE__*/React.createElement("div", {
+          style: { display:"flex", justifyContent:"space-between", alignItems:"center", background: lvlInfo.color, color:"#fff", padding:"7px 12px", borderRadius:8, marginBottom:8, fontSize:12, fontWeight:800 }
+        }, lvlInfo.ico + " " + lvlInfo.name,
+          /*#__PURE__*/React.createElement("span", { style:{ fontSize:11, background:"rgba(255,255,255,.25)", padding:"2px 8px", borderRadius:10 } }, doneCount + "/" + lvlItems.length)),
+        lvlItems.map(function (it, i) {
+          var label = it.code + " - " + it.task;
+          var isDone = checklist.indexOf(label) >= 0;
+          return /*#__PURE__*/React.createElement("div", {
+            key: it.code,
+            style: { display:"flex", alignItems:"flex-start", gap:8, padding:"7px 10px", marginBottom:4, borderRadius:7,
+                     background: isDone ? "#f0f9f0" : "#fff", border: "1px solid " + (isDone ? "#c8e6c9" : "#eef2f7") }
+          },
+            /*#__PURE__*/React.createElement("input", {
+              type:"checkbox", checked: isDone, style:{ marginTop:2, cursor:"pointer" },
+              onChange: function() { toggleCL(label); }
+            }),
+            /*#__PURE__*/React.createElement("div", { style:{ flex:1 } },
+              /*#__PURE__*/React.createElement("div", { style:{ fontSize:11, color: isDone ? "#1a6b3c" : "#2d3748", fontWeight: isDone ? 600 : 400, textDecoration: isDone ? "none" : "none" } },
+                /*#__PURE__*/React.createElement("strong", { style:{ color:"#6b7fa3", marginRight:5 } }, it.code), it.task),
+              /*#__PURE__*/React.createElement("div", { style:{ display:"flex", gap:6, marginTop:3 } },
+                /*#__PURE__*/React.createElement("span", { style:{ fontSize:9, background:(PM_CAT_COLORS[it.cat]||"#666")+"18", color:PM_CAT_COLORS[it.cat]||"#666", padding:"1px 6px", borderRadius:4, fontWeight:700 } }, it.cat),
+                /*#__PURE__*/React.createElement("span", { style:{ fontSize:9, color:"#9aa5b4" } }, it.period))
+            )
+          );
+        })
+      );
     })), /*#__PURE__*/React.createElement("div", {
       className: "modal-foot"
     }, /*#__PURE__*/React.createElement("button", {
@@ -14871,32 +14992,90 @@ function SysAdminPage(_ref) {
 
     // ── ÜRETİM ÖNİZLEME MODALI ──
     prodPreview && React.createElement("div", {
-      style: { position:"fixed", inset:0, background:"rgba(15,32,68,.55)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }
+      style: { position:"fixed", inset:0, background:"rgba(15,32,68,.55)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:16 }
     },
-      React.createElement("div", { style:{ background:"#fff", borderRadius:16, maxWidth:760, width:"100%", maxHeight:"85vh", overflow:"auto", padding:24 } },
-        React.createElement("h3", { style:{ fontSize:17, fontWeight:800, color:"#0f2044", marginBottom:4 } }, "📊 Üretim Verisi Önizleme"),
-        React.createElement("p", { style:{ fontSize:12, color:"#6b7fa3", marginBottom:16 } }, "Kontrol edin ve onaylayın — hiçbir şey henüz kaydedilmedi"),
+      React.createElement("div", { style:{ background:"#fff", borderRadius:16, maxWidth:860, width:"100%", maxHeight:"88vh", overflow:"auto", padding:24 } },
+        React.createElement("h3", { style:{ fontSize:17, fontWeight:800, color:"#0f2044", marginBottom:4 } }, "📊 Üretim Verisi Analizi"),
+        React.createElement("p", { style:{ fontSize:12, color:"#6b7fa3", marginBottom:14 } },
+          prodPreview.totalDays + " iş günü tarandı · " + prodPreview.stats.rows + " satır işlendi — hiçbir şey henüz kaydedilmedi"),
 
-        // Tek eşleşenler özeti
-        React.createElement("div", { style:{ background:"#f0f9f0", border:"1px solid #c8e6c9", borderRadius:10, padding:"12px 16px", marginBottom:12 } },
-          React.createElement("div", { style:{ fontWeight:800, fontSize:13, color:"#1a6b3c", marginBottom:6 } }, "✅ Otomatik eşleşen: " + prodPreview.single.length + " referans"),
-          React.createElement("div", { style:{ fontSize:11, color:"#4a5568", maxHeight:120, overflow:"auto" } },
-            prodPreview.single.slice(0, 30).map(function(s, i) {
-              return React.createElement("div", { key:i, style:{ padding:"2px 0" } },
-                s.ref + " → " + s.mold.id + " (" + s.qty.toLocaleString() + " adet ÷ " + (s.mold.cavities||1) + " göz = " + s.shots.toLocaleString() + " baskı)");
+        // VERİ TEMİZLİĞİ ÖZETİ
+        React.createElement("div", { style:{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:8, marginBottom:14 } },
+          [["📅", prodPreview.totalDays, "İş Günü", "#1565c0"],
+           ["📉", prodPreview.stats.negatives, "Negatif Kayıt (düşüldü)", "#e65100"],
+           ["🚫", prodPreview.stats.anomalies, "Anormal (atlandı)", "#c62828"],
+           ["✅", prodPreview.single.length + prodPreview.multi.length, "Eşleşen Referans", "#1a6b3c"]].map(function(k, i) {
+            return React.createElement("div", { key:i, style:{ background:"#f8f9fc", borderRadius:8, padding:"8px 10px", textAlign:"center", border:"1px solid #eef2f7" } },
+              React.createElement("div", { style:{ fontSize:16 } }, k[0]),
+              React.createElement("div", { style:{ fontSize:18, fontWeight:800, color:k[3] } }, k[1]),
+              React.createElement("div", { style:{ fontSize:9, color:"#6b7fa3" } }, k[2]));
+          })
+        ),
+
+        // ═══ FİLTRE AYARI ═══
+        React.createElement("div", { style:{ background:"#f0f7ff", border:"1px solid #c5daff", borderRadius:10, padding:"12px 16px", marginBottom:14 } },
+          React.createElement("div", { style:{ fontWeight:800, fontSize:12, color:"#1565c0", marginBottom:8 } }, "⚙️ Düzenli Çalışma Filtresi"),
+          React.createElement("div", { style:{ display:"flex", gap:12, alignItems:"center", flexWrap:"wrap" } },
+            React.createElement("span", { style:{ fontSize:12, color:"#2d3748" } }, prodPreview.totalDays + " günün en az"),
+            React.createElement("input", {
+              type:"number", min:1, max:prodPreview.totalDays, value: prodPreview.minDays,
+              style:{ width:70, padding:"6px 8px", border:"1px solid #c5daff", borderRadius:6, fontSize:13, fontWeight:700, textAlign:"center" },
+              onChange: function(e) {
+                var v = parseInt(e.target.value) || 1;
+                setProdPreview(function(prev) {
+                  var np = _objectSpread({}, prev);
+                  np.minDays = v;
+                  np.single = prev.single.map(function(x) { return _objectSpread(_objectSpread({}, x), { regular: x.dayCount >= v }); });
+                  np.multi = prev.multi.map(function(x) { return _objectSpread(_objectSpread({}, x), { regular: x.dayCount >= v }); });
+                  np.notFound = prev.notFound.map(function(x) { return _objectSpread(_objectSpread({}, x), { regular: x.dayCount >= v }); });
+                  return np;
+                });
+              }
             }),
-            prodPreview.single.length > 30 && React.createElement("div", { style:{ color:"#9aa5b4" } }, "... ve " + (prodPreview.single.length-30) + " tane daha")
+            React.createElement("span", { style:{ fontSize:12, color:"#2d3748" } }, "gününde üretimi olan = DÜZENLİ"),
+            React.createElement("span", { style:{ fontSize:11, fontWeight:800, color:"#1a6b3c", background:"#e8f5e9", padding:"4px 10px", borderRadius:12 } },
+              prodPreview.single.filter(function(x){return x.regular;}).length + prodPreview.multi.filter(function(x){return x.regular;}).length + " düzenli kalıp")
+          ),
+          React.createElement("label", { style:{ display:"flex", alignItems:"center", gap:8, marginTop:10, cursor:"pointer" } },
+            React.createElement("input", {
+              type:"checkbox", checked: prodPreview.onlyRegular === true,
+              onChange: function(e) {
+                var c = e.target.checked;
+                setProdPreview(function(prev) { return _objectSpread(_objectSpread({}, prev), { onlyRegular: c }); });
+              }
+            }),
+            React.createElement("span", { style:{ fontSize:12, fontWeight:600, color:"#1565c0" } }, "SADECE düzenli çalışan kalıplara uygula (önerilen — pilot için)")
           )
         ),
 
-        // ÇOKLU EŞLEŞENLER — kullanıcı seçimi
+        // TEK EŞLEŞENLER
+        React.createElement("div", { style:{ background:"#f0f9f0", border:"1px solid #c8e6c9", borderRadius:10, padding:"12px 16px", marginBottom:12 } },
+          React.createElement("div", { style:{ fontWeight:800, fontSize:13, color:"#1a6b3c", marginBottom:8 } }, "✅ Otomatik eşleşen: " + prodPreview.single.length + " referans"),
+          React.createElement("div", { style:{ fontSize:11, maxHeight:180, overflow:"auto" } },
+            prodPreview.single.slice(0, 60).map(function(s, i) {
+              return React.createElement("div", { key:i, style:{ padding:"3px 0", display:"flex", justifyContent:"space-between", gap:8, opacity: (prodPreview.onlyRegular && !s.regular) ? .4 : 1 } },
+                React.createElement("span", null,
+                  s.regular && React.createElement("span", { style:{ background:"#1a6b3c", color:"#fff", padding:"1px 5px", borderRadius:3, fontSize:8, fontWeight:800, marginRight:5 } }, "DÜZENLİ"),
+                  React.createElement("strong", null, s.ref), " → ", s.mold.id),
+                React.createElement("span", { style:{ color:"#6b7fa3", whiteSpace:"nowrap" } },
+                  s.dayCount + "/" + prodPreview.totalDays + " gün · " + s.qty.toLocaleString() + "÷" + (s.mold.cavities||1) + " = " + s.shots.toLocaleString() + " baskı"));
+            }),
+            prodPreview.single.length > 60 && React.createElement("div", { style:{ color:"#9aa5b4", marginTop:4 } }, "... ve " + (prodPreview.single.length-60) + " tane daha")
+          )
+        ),
+
+        // ÇOKLU EŞLEŞENLER
         prodPreview.multi.length > 0 && React.createElement("div", { style:{ background:"#fff8f0", border:"1px solid #ffcc80", borderRadius:10, padding:"12px 16px", marginBottom:12 } },
           React.createElement("div", { style:{ fontWeight:800, fontSize:13, color:"#e65100", marginBottom:8 } }, "⚠ Birden fazla kalıpta üretilebilen: " + prodPreview.multi.length + " referans — seçim yapın"),
+          React.createElement("div", { style:{ maxHeight:220, overflow:"auto" } },
           prodPreview.multi.map(function(mu, i) {
-            return React.createElement("div", { key:i, style:{ display:"flex", alignItems:"center", gap:10, padding:"6px 0", borderBottom:"1px solid #ffe0b2", flexWrap:"wrap" } },
-              React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:"#0f2044", minWidth:180 } }, mu.ref, React.createElement("span", { style:{ color:"#9aa5b4", fontWeight:400 } }, " · " + mu.qty.toLocaleString() + " adet")),
+            return React.createElement("div", { key:i, style:{ display:"flex", alignItems:"center", gap:10, padding:"6px 0", borderBottom:"1px solid #ffe0b2", flexWrap:"wrap", opacity: (prodPreview.onlyRegular && !mu.regular) ? .4 : 1 } },
+              React.createElement("div", { style:{ fontSize:12, fontWeight:700, color:"#0f2044", minWidth:200 } },
+                mu.regular && React.createElement("span", { style:{ background:"#1a6b3c", color:"#fff", padding:"1px 5px", borderRadius:3, fontSize:8, marginRight:5 } }, "DÜZENLİ"),
+                mu.ref,
+                React.createElement("span", { style:{ color:"#9aa5b4", fontWeight:400, fontSize:10, display:"block" } }, mu.dayCount + "/" + prodPreview.totalDays + " gün · " + mu.qty.toLocaleString() + " adet")),
               React.createElement("select", {
-                className:"form-input", style:{ fontSize:11, width:260 }, value: mu.choice,
+                className:"form-input", style:{ fontSize:11, width:250 }, value: mu.choice,
                 onChange: function(e) {
                   var v = e.target.value;
                   setProdPreview(function(prev) {
@@ -14910,21 +15089,26 @@ function SysAdminPage(_ref) {
                 mu.molds.map(function(m) {
                   return React.createElement("option", { key:m.id, value:m.id }, m.id + " (" + (m.cavities||1) + " göz)");
                 }),
-                React.createElement("option", { value:"SKIP" }, "⏭ Bu referansı atla")
+                React.createElement("option", { value:"SKIP" }, "⏭ Atla")
               )
             );
-          })
+          }))
         ),
 
-        // Eşleşmeyenler
-        prodPreview.notFound.length > 0 && React.createElement("div", { style:{ background:"#fff5f5", border:"1px solid #ffcdd2", borderRadius:10, padding:"12px 16px", marginBottom:12 } },
-          React.createElement("div", { style:{ fontWeight:800, fontSize:13, color:"#c62828", marginBottom:4 } }, "❌ Eşleşmeyen: " + prodPreview.notFound.length + " referans (atlanacak)"),
-          React.createElement("div", { style:{ fontSize:11, color:"#4a5568" } },
-            prodPreview.notFound.slice(0, 10).map(function(n) { return n.ref; }).join(", ") + (prodPreview.notFound.length > 10 ? " ..." : ""))
+        // EŞLEŞMEYEN + NET NEGATİF
+        (prodPreview.notFound.length > 0 || prodPreview.skippedNeg.length > 0) && React.createElement("div", { style:{ background:"#fff5f5", border:"1px solid #ffcdd2", borderRadius:10, padding:"12px 16px", marginBottom:12 } },
+          prodPreview.notFound.length > 0 && React.createElement("div", null,
+            React.createElement("div", { style:{ fontWeight:800, fontSize:12, color:"#c62828", marginBottom:4 } }, "❌ Kalıp eşleşmesi bulunamayan: " + prodPreview.notFound.length + " referans (atlanacak)"),
+            React.createElement("div", { style:{ fontSize:10, color:"#4a5568", maxHeight:60, overflow:"auto" } },
+              prodPreview.notFound.slice(0, 25).map(function(n) { return n.ref; }).join(", ") + (prodPreview.notFound.length > 25 ? " ..." : ""))),
+          prodPreview.skippedNeg.length > 0 && React.createElement("div", { style:{ marginTop:8 } },
+            React.createElement("div", { style:{ fontWeight:800, fontSize:12, color:"#e65100", marginBottom:4 } }, "📉 Net negatif/sıfır: " + prodPreview.skippedNeg.length + " referans (atlandı)"),
+            React.createElement("div", { style:{ fontSize:10, color:"#4a5568" } },
+              prodPreview.skippedNeg.slice(0, 15).map(function(n) { return n.ref; }).join(", ")))
         ),
 
-        // Butonlar
-        React.createElement("div", { style:{ display:"flex", gap:10, justifyContent:"flex-end", marginTop:16 } },
+        // BUTONLAR
+        React.createElement("div", { style:{ display:"flex", gap:10, justifyContent:"flex-end", marginTop:16, position:"sticky", bottom:0, background:"#fff", paddingTop:10 } },
           React.createElement("button", {
             className:"btn", style:{ background:"#fff", border:"1px solid #dde3ea", color:"#4a5568", fontWeight:700, padding:"10px 20px" },
             onClick: function() { setProdPreview(null); }
@@ -14948,7 +15132,7 @@ function SysAdminPage(_ref) {
     React.createElement("div", {className:"card", style:{marginBottom:16, borderLeft:"4px solid #1a6b3c"}},
       React.createElement("div", {className:"section-title", style:{marginBottom:8}}, "📊 Üretim Verisi Yükle (Otomatik PM)"),
       React.createElement("p", {style:{fontSize:12, color:"#6b7fa3", marginBottom:6}},
-        "Excel'de REFERANS bazlı üretim adedini yükleyin. Sistem referanstan kalıbı bulur, göz sayısına böler. Çoklu kalıp eşleşmesinde size sorar."),
+        "Ham üretim verinizi (Referans | Adet | Tarih) olduğu gibi yükleyin. Sistem negatifleri düşer, anormal değerleri atlar, her referansın kaç günde çalıştığını sayar."),
       React.createElement("p", {style:{fontSize:11, color:"#1a6b3c", marginBottom:14, fontWeight:600}},
         "PM eşiği aşılan kalıplar için OTOMATİK PM iş emri oluşturulur ve havuza düşer."),
       React.createElement("div", {style:{display:"flex", gap:10, flexWrap:"wrap", alignItems:"center"}},
@@ -14961,7 +15145,7 @@ function SysAdminPage(_ref) {
             onChange: function(e) {
               var file = e.target.files[0];
               if (!file) return;
-              analyzeProductionExcel(file, data, function(res) {
+              analyzeProductionExcel(file, data, { minDays: 15, maxJump: 200000 }, function(res) {
                 if (res.error) { alert("❌ Hata: " + res.error); return; }
                 if (res.single.length === 0 && res.multi.length === 0) {
                   alert("⚠ Hiçbir referans eşleşmedi.\nBulunamayan: " + res.notFound.length + " referans");
@@ -14978,7 +15162,7 @@ function SysAdminPage(_ref) {
           onClick: function() { downloadProductionTemplate(data.molds); }
         }, "⬇ Şablon İndir"),
         React.createElement("div", {style:{fontSize:11, color:"#9aa5b4"}},
-          "Format: Referans Kodu | Üretim Adedi")
+          "Format: ITNBR | TRQTY | UPDDT")
       )
     ),
 
@@ -15762,19 +15946,53 @@ function RptKPI(_ref) {
 // Excel formatı: Referans Kodu | Üretim Adedi
 // Sistem referanstan kalıbı bulur. Çoklu eşleşmede kullanıcıya sorar.
 
-// AŞAMA 1: Excel'i analiz et — önizleme verisi üret
-function analyzeProductionExcel(file, data, done) {
+// AŞAMA 1: Excel'i analiz et — önizleme + frekans analizi
+// Excel formatı: Referans (ITNBR) | Adet (TRQTY) | Tarih (UPDDT, 126MMDD veya normal)
+function _parseUpdDt(v) {
+  var s = String(v || "").trim();
+  if (!s) return null;
+  // 1260730 → 2026-07-30
+  if (/^1\d{6}$/.test(s)) return "20" + s.slice(1,3) + "-" + s.slice(3,5) + "-" + s.slice(5,7);
+  // Excel seri tarihi
+  if (/^\d{5}$/.test(s)) {
+    var d = new Date(Date.UTC(1899, 11, 30) + parseInt(s) * 86400000);
+    return d.toISOString().slice(0,10);
+  }
+  // 2026-07-30 veya 30.07.2026
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0,10);
+  var m = s.match(/^(\d{2})[.\/](\d{2})[.\/](\d{4})/);
+  if (m) return m[3] + "-" + m[2] + "-" + m[1];
+  return s.slice(0,10);
+}
+function _toNum(v) {
+  if (typeof v === "number") return v;
+  var s = String(v || "").trim().replace(/\s/g, "");
+  // Türkçe format: 1.234,56 → 1234.56
+  if (s.indexOf(",") >= 0 && s.indexOf(".") >= 0) s = s.replace(/\./g, "").replace(",", ".");
+  else if (s.indexOf(",") >= 0) s = s.replace(",", ".");
+  var n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
+function analyzeProductionExcel(file, data, opts, done) {
+  opts = opts || {};
+  var minDays = opts.minDays != null ? opts.minDays : 15;   // düzenli sayılma eşiği (gün)
+  var maxJump = opts.maxJump != null ? opts.maxJump : 200000; // anormal değer sınırı
   var reader = new FileReader();
   reader.onload = function(ev) {
     try {
       var wb = XLSX.read(new Uint8Array(ev.target.result), { type: "array" });
       var ws = wb.Sheets[wb.SheetNames[0]];
       var rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
+      // Başlık satırı tespiti
       var startIdx = 0;
-      if (rows.length > 0 && isNaN(parseFloat(rows[0][1]))) startIdx = 1;
+      if (rows.length > 0) {
+        var h1 = String(rows[0][1] || "");
+        if (isNaN(parseFloat(h1)) || /qty|adet|miktar/i.test(h1)) startIdx = 1;
+      }
 
       var molds = data.molds || [];
-      // Referans → kalıp(lar) haritası
+      // Referans → kalıp(lar)
       var refMap = {};
       molds.forEach(function(m) {
         (m.references || []).forEach(function(r) {
@@ -15785,25 +16003,55 @@ function analyzeProductionExcel(file, data, done) {
         });
       });
 
-      var single = [];    // Tek kalıp eşleşen: {ref, qty, mold, shots}
-      var multi = [];     // Çoklu eşleşen: {ref, qty, molds:[...], choice:"SPLIT"|moldId}
-      var notFound = [];  // Eşleşmeyen
+      // Ham veriyi topla: referans → { net adet, günler, negatif, anormal }
+      var agg = {};
+      var allDays = {};
+      var stats = { rows: 0, negatives: 0, negSum: 0, anomalies: 0, anomalySum: 0 };
 
       for (var i = startIdx; i < rows.length; i++) {
         var ref = String(rows[i][0] || "").trim().toUpperCase();
-        var qty = parseFloat(rows[i][1]);
-        if (!ref || isNaN(qty) || qty <= 0) continue;
-        var matches = refMap[ref] || [];
-        if (matches.length === 0) {
-          notFound.push({ ref: ref, qty: qty });
-        } else if (matches.length === 1) {
-          var m0 = matches[0];
-          single.push({ ref: ref, qty: qty, mold: m0, shots: Math.round(qty / (parseInt(m0.cavities) || 1)) });
-        } else {
-          multi.push({ ref: ref, qty: qty, molds: matches, choice: "SPLIT" });
+        if (!ref) continue;
+        var qty = _toNum(rows[i][1]);
+        if (qty === 0) continue;
+        var day = _parseUpdDt(rows[i][2]);
+        stats.rows++;
+        if (!agg[ref]) agg[ref] = { net: 0, days: {}, neg: 0, anom: 0 };
+        // ANORMAL değer filtresi (hem pozitif hem negatif aşırı)
+        if (Math.abs(qty) > maxJump) {
+          agg[ref].anom++; stats.anomalies++; stats.anomalySum += qty;
+          continue; // anormal değer hesaba KATILMAZ
         }
+        if (qty < 0) { agg[ref].neg++; stats.negatives++; stats.negSum += qty; }
+        // NEGATİFLER NET TOPLAMDAN DÜŞÜLÜR
+        agg[ref].net += qty;
+        if (day) { agg[ref].days[day] = true; allDays[day] = true; }
       }
-      done({ single: single, multi: multi, notFound: notFound });
+
+      var totalDays = Object.keys(allDays).length;
+      var single = [], multi = [], notFound = [], skippedNeg = [];
+
+      Object.keys(agg).forEach(function(ref) {
+        var a = agg[ref];
+        var dayCount = Object.keys(a.days).length;
+        var matches = refMap[ref] || [];
+        var row = { ref: ref, qty: a.net, dayCount: dayCount, totalDays: totalDays,
+                    regular: dayCount >= minDays, negCount: a.neg, anomCount: a.anom };
+        if (a.net <= 0) { skippedNeg.push(row); return; } // net negatif/sıfır → atla
+        if (matches.length === 0) { notFound.push(row); }
+        else if (matches.length === 1) {
+          var m0 = matches[0];
+          single.push(_objectSpread(_objectSpread({}, row), { mold: m0, shots: Math.round(a.net / (parseInt(m0.cavities) || 1)) }));
+        } else {
+          multi.push(_objectSpread(_objectSpread({}, row), { molds: matches, choice: "SPLIT" }));
+        }
+      });
+
+      // Frekansa göre sırala (düzenli olanlar üstte)
+      var byFreq = function(a, b) { return b.dayCount - a.dayCount; };
+      single.sort(byFreq); multi.sort(byFreq); notFound.sort(byFreq);
+
+      done({ single: single, multi: multi, notFound: notFound, skippedNeg: skippedNeg,
+             totalDays: totalDays, stats: stats, minDays: minDays, maxJump: maxJump });
     } catch(err) { done({ error: err.message }); }
   };
   reader.readAsArrayBuffer(file);
@@ -15811,7 +16059,12 @@ function analyzeProductionExcel(file, data, done) {
 
 // AŞAMA 2: Onaylanan önizlemeyi uygula
 function applyProductionData(preview, data, setData, addAuditLog, user, done) {
+  var onlyRegular = preview.onlyRegular === true; // sadece düzenli çalışanlara uygula
   var moldsCopy = (data.molds || []).map(function(m) { return _objectSpread({}, m); });
+  // Düzenli çalışan kalıpları işaretle (aktif kalıp listesi)
+  var regularMoldIds = {};
+  preview.single.forEach(function(s) { if (s.regular) regularMoldIds[s.mold.id] = s.dayCount; });
+  preview.multi.forEach(function(mu) { if (mu.regular) mu.molds.forEach(function(m) { regularMoldIds[m.id] = mu.dayCount; }); });
   var findM = function(id) { return moldsCopy.find(function(m) { return m.id === id; }); };
   var addShots = function(moldId, shots) {
     var m = findM(moldId);
@@ -15823,11 +16076,13 @@ function applyProductionData(preview, data, setData, addAuditLog, user, done) {
 
   // Tek eşleşenler
   preview.single.forEach(function(s) {
+    if (onlyRegular && !s.regular) return;
     addShots(s.mold.id, s.shots);
     totalShots += s.shots; applied++;
   });
   // Çoklu eşleşenler — kullanıcının seçimine göre
   preview.multi.forEach(function(mu) {
+    if (onlyRegular && !mu.regular) return;
     if (mu.choice === "SPLIT") {
       // Eşit böl
       var per = mu.qty / mu.molds.length;
@@ -15875,6 +16130,15 @@ function applyProductionData(preview, data, setData, addAuditLog, user, done) {
     }
   });
 
+  // Düzenli çalışan kalıplara işaret koy (aktif kalıp listesi için)
+  var today = nowStr().slice(0, 10);
+  moldsCopy.forEach(function(m) {
+    if (regularMoldIds[m.id]) {
+      m.is_regular = true;
+      m.regular_days = regularMoldIds[m.id];
+      m.regular_updated = today;
+    }
+  });
   setData(function(prev) {
     var nd = _objectSpread({}, prev);
     nd.molds = moldsCopy;
@@ -15895,16 +16159,16 @@ function applyProductionData(preview, data, setData, addAuditLog, user, done) {
 // Referans bazlı şablon indir
 function downloadProductionTemplate(molds) {
   var wb = XLSX.utils.book_new();
-  var rows = [["Referans Kodu", "Üretim Adedi"]];
+  var rows = [["ITNBR (Referans)", "TRQTY (Adet)", "UPDDT (Tarih)"]];
   var seen = {};
   (molds || []).forEach(function(m) {
     (m.references || []).forEach(function(r) {
       var c = String(r.ref_code || "").trim();
-      if (c && !seen[c]) { seen[c] = 1; rows.push([c, ""]); }
+      if (c && !seen[c]) { seen[c] = 1; rows.push([c, "", ""]); }
     });
   });
   var ws = XLSX.utils.aoa_to_sheet(rows.slice(0, 500));
-  ws["!cols"] = [{ wch: 18 }, { wch: 14 }];
+  ws["!cols"] = [{ wch: 18 }, { wch: 14 }, { wch: 14 }];
   XLSX.utils.book_append_sheet(wb, ws, "Üretim");
   XLSX.writeFile(wb, "uretim_verisi_sablonu.xlsx");
 }
@@ -15955,7 +16219,7 @@ function InterventionTable(_ref) {
     React.createElement("div", { className: "card", style: { padding: 0, overflow: "auto", maxHeight: "70vh" } },
       React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", minWidth: 1100 } },
         React.createElement("thead", null, React.createElement("tr", null,
-          [["İş Emri","id"], ["Kalıp","mold_id"], ["Durum","status"], ["Öncelik","priority"], ["Açıklama / Arıza Nedeni","description"], ["Talep Tarihi","created_at"], ["Atama Tarihi","assigned_at"], ["Başlama","started_at"], ["Planlanan Bitiş","planned_end"], ["Gerçek Bitiş","closed_at"], ["Atanan","assigned"], ["Talep Eden","reported_by"]].map(function(h) {
+          [["İş Emri","id"], ["Kalıp","mold_id"], ["Durum","status"], ["Öncelik","priority"], ["Açıklama / Arıza Nedeni","description"], ["Talep Tarihi","created_at"], ["Atama Tarihi","assigned_at"], ["Başlama","started_at"], ["Planlanan Bitiş","planned_end"], ["Gerçek Bitiş","closed_at"], ["Atanan","assigned"], ["Müdahale Edenler","interventions"], ["Talep Eden","reported_by"]].map(function(h) {
             var isActive = sortCfg.key === h[1];
             return React.createElement("th", {
               key: h[1],
@@ -15996,6 +16260,22 @@ function InterventionTable(_ref) {
               overdue && React.createElement("div", { style: { fontSize: 9, color: "#e65100", fontWeight: 700, marginTop: 2 } }, "⚠ Süre aşıldı!")),
             React.createElement("td", { style: Object.assign({}, tdS, { whiteSpace: "nowrap", color: w.closed_at ? "#1a6b3c" : "#9aa5b4", fontWeight: w.closed_at ? 700 : 400 }) }, fmtD(w.closed_at)),
             React.createElement("td", { style: Object.assign({}, tdS, { whiteSpace: "nowrap" }) }, assignedUser ? assignedUser.name : (w.assigned || "—")),
+            React.createElement("td", { style: Object.assign({}, tdS, { maxWidth: 180 }) }, (function() {
+              var ints = w.interventions || [];
+              var names = [];
+              ints.forEach(function(it) {
+                var u = users.find(function(x) { return x.id === it.user; });
+                var nm = u ? u.name : it.user;
+                if (names.indexOf(nm) < 0) names.push(nm);
+              });
+              // Son atanan da katkı sahibi
+              if (assignedUser && names.indexOf(assignedUser.name) < 0) names.push(assignedUser.name);
+              if (names.length <= 1) return React.createElement("span", { style: { color: "#9aa5b4", fontSize: 10 } }, names.length === 1 ? names[0] : "—");
+              return React.createElement("div", null,
+                React.createElement("span", { style: { background: "#7b1fa2", color: "#fff", padding: "1px 6px", borderRadius: 4, fontSize: 9, fontWeight: 700 } }, "👥 " + names.length + " kişi"),
+                React.createElement("div", { style: { fontSize: 10, color: "#4a5568", marginTop: 2 } }, names.join(", "))
+              );
+            })()),
             React.createElement("td", { style: Object.assign({}, tdS, { whiteSpace: "nowrap", color: "#6b7fa3" }) }, reporter ? reporter.name : (w.reported_by || "—"))
           );
         }))
@@ -16017,6 +16297,68 @@ function unassignedAgeMin(wo) {
   var c = _parseLocalDate(wo.created_at);
   if (!c) return 0;
   return Math.round((Date.now() - c.getTime()) / 60000);
+}
+
+// İŞ DEVRİ MODALI — çok teknisyenli müdahale
+function TransferModal(_ref) {
+  var wo = _ref.wo, users = _ref.users, user = _ref.user, onTransfer = _ref.onTransfer, onClose = _ref.onClose;
+  var _n = useState(""), _n2 = _slicedToArray(_n, 2), note = _n2[0], setNote = _n2[1];
+  var _t = useState(""), _t2 = _slicedToArray(_t, 2), target = _t2[0], setTarget = _t2[1];
+  var techs = (users || []).filter(function(u) { return (u.role === "tech" || u.role === "leader") && u.id !== user.id; });
+  return React.createElement("div", { style: { position:"fixed", inset:0, background:"rgba(15,32,68,.55)", zIndex:9999, display:"flex", alignItems:"center", justifyContent:"center", padding:20 } },
+    React.createElement("div", { style: { background:"#fff", borderRadius:16, maxWidth:480, width:"100%", padding:24 } },
+      React.createElement("h3", { style:{ fontSize:16, fontWeight:800, color:"#0f2044", marginBottom:4 } }, "🔄 İşi Başka Teknisyene Devret"),
+      React.createElement("p", { style:{ fontSize:12, color:"#6b7fa3", marginBottom:16 } }, wo.id + " · " + wo.mold_id + " — yaptığınız kısım kaydedilecek, katkınız görünür kalacak"),
+      React.createElement("label", { style:{ fontSize:12, fontWeight:700, color:"#2d3748", display:"block", marginBottom:6 } }, "Devredilecek Kişi *"),
+      React.createElement("select", {
+        className:"form-input", style:{ marginBottom:14, width:"100%" }, value: target,
+        onChange: function(e) { setTarget(e.target.value); }
+      },
+        React.createElement("option", { value:"" }, "Seçin..."),
+        techs.map(function(t) { return React.createElement("option", { key:t.id, value:t.id }, t.name + (t.role === "leader" ? " (Lider)" : "")); })
+      ),
+      React.createElement("label", { style:{ fontSize:12, fontWeight:700, color:"#2d3748", display:"block", marginBottom:6 } }, "Yaptığınız Kısım / Devir Notu *"),
+      React.createElement("textarea", {
+        className:"form-input", style:{ width:"100%", minHeight:80, marginBottom:16, resize:"vertical" },
+        placeholder:"Örn: Söküm ve ölçüm tamamlandı, kaynak işlemi bekliyor. Erozyon bölgesi işaretlendi.",
+        value: note, onChange: function(e) { setNote(e.target.value); }
+      }),
+      React.createElement("div", { style:{ display:"flex", gap:10, justifyContent:"flex-end" } },
+        React.createElement("button", {
+          className:"btn", style:{ background:"#fff", border:"1px solid #dde3ea", color:"#4a5568", fontWeight:700, padding:"9px 18px" },
+          onClick: onClose
+        }, "İptal"),
+        React.createElement("button", {
+          className:"btn", style:{ background:"#e65100", color:"#fff", fontWeight:800, padding:"9px 20px" },
+          onClick: function() {
+            if (!target) { alert("Devredilecek kişiyi seçin"); return; }
+            if (!note.trim()) { alert("Yaptığınız kısmı yazın (suistimal önleme için zorunlu)"); return; }
+            onTransfer(target, note.trim());
+          }
+        }, "🔄 Devret")
+      )
+    )
+  );
+}
+
+// Müdahale geçmişi gösterimi — kimler katkıda bulundu
+function InterventionHistory(_ref) {
+  var wo = _ref.wo, users = _ref.users;
+  var ints = wo.interventions || [];
+  if (ints.length === 0) return null;
+  var uname = function(id) { var u = (users||[]).find(function(x){return x.id===id;}); return u ? u.name : id; };
+  return React.createElement("div", { style:{ marginTop:8, background:"#f8f9fc", borderRadius:8, padding:"8px 12px", border:"1px solid #eef2f7" } },
+    React.createElement("div", { style:{ fontSize:10, fontWeight:800, color:"#6b7fa3", marginBottom:6 } }, "👥 MÜDAHALE GEÇMİŞİ (" + ints.length + ")"),
+    ints.map(function(it, i) {
+      return React.createElement("div", { key:i, style:{ fontSize:11, paddingBottom:6, marginBottom:6, borderBottom: i < ints.length-1 ? "1px solid #eef2f7" : "none" } },
+        React.createElement("div", { style:{ display:"flex", justifyContent:"space-between" } },
+          React.createElement("strong", { style:{ color:"#1565c0" } }, uname(it.user)),
+          React.createElement("span", { style:{ color:"#9aa5b4", fontSize:10 } }, (it.ts || "").slice(5, 16))
+        ),
+        it.note && React.createElement("div", { style:{ color:"#4a5568", marginTop:2 } }, it.note)
+      );
+    })
+  );
 }
 // İş ilerleme durumu — aşama + yüzde
 function WOProgress(_ref) {
