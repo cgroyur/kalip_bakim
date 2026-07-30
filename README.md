@@ -1,1 +1,0 @@
-# kalip_bakim
