@@ -15177,14 +15177,26 @@ function SysAdminPage(_ref) {
           }, "İptal"),
           React.createElement("button", {
             className:"btn", style:{ background:"#1a6b3c", color:"#fff", fontWeight:800, padding:"10px 24px" },
-            onClick: function() {
+            onClick: function(ev) {
+              var _b = ev && ev.currentTarget;
+              if (_b) { _b.disabled = true; _b.textContent = "⏳ İşleniyor..."; }
+              try {
               applyProductionData(prodPreview, data, setData, addAuditLog, user, function(res) {
+                if (res && res.error) {
+                  if (_b) { _b.disabled = false; _b.textContent = "✅ Onayla ve Uygula"; }
+                  return;
+                }
                 setProdPreview(null);
                 var msg = "✅ " + res.applied + " referans işlendi\n📈 " + res.totalShots.toLocaleString() + " baskı eklendi";
                 if (res.pmTriggered.length > 0) msg += "\n\n🔧 " + res.pmTriggered.length + " OTOMATİK PM AÇILDI:\n" + res.pmTriggered.slice(0,15).join("\n") + (res.pmTriggered.length > 15 ? "\n... (+" + (res.pmTriggered.length-15) + ")" : "");
                 if (res.pmSkipped > 0) msg += "\n\n⏳ " + res.pmSkipped + " kalıp daha eşiği aştı, limit doldu. Sonraki yüklemede açılacak.";
                 alert(msg);
               });
+              } catch (err) {
+                if (_b) { _b.disabled = false; _b.textContent = "✅ Onayla ve Uygula"; }
+                alert("❌ Uygulama sırasında hata oluştu:\n\n" + (err && err.message ? err.message : String(err)) +
+                      "\n\nBu mesajı geliştiriciye iletin.");
+              }
             }
           }, "✅ Onayla ve Uygula")
         )
@@ -15193,7 +15205,9 @@ function SysAdminPage(_ref) {
 
     // ── ÜRETİM VERİSİ + PM ──
     React.createElement("div", {className:"card", style:{marginBottom:16, borderLeft:"4px solid #1a6b3c"}},
-      React.createElement("div", {className:"section-title", style:{marginBottom:8}}, "📊 Üretim Verisi Yükle (Otomatik PM)"),
+      React.createElement("div", {className:"section-title", style:{marginBottom:8, display:"flex", alignItems:"center", gap:8}},
+        "📊 Üretim Verisi Yükle (Otomatik PM)",
+        React.createElement("span", {style:{fontSize:9, background:"#1a6b3c", color:"#fff", padding:"2px 8px", borderRadius:10, fontWeight:700}}, "v15.3")),
       React.createElement("p", {style:{fontSize:12, color:"#6b7fa3", marginBottom:6}},
         "Ham üretim verinizi (Referans | Adet | Tarih) olduğu gibi yükleyin. Sistem negatifleri düşer, anormal değerleri atlar, her referansın kaç günde çalıştığını sayar."),
       React.createElement("p", {style:{fontSize:11, color:"#1a6b3c", marginBottom:14, fontWeight:600}},
@@ -16122,7 +16136,14 @@ function analyzeProductionExcel(file, data, opts, done) {
 
 // AŞAMA 2: Onaylanan önizlemeyi uygula
 function applyProductionData(preview, data, setData, addAuditLog, user, done) {
+  // GUARD: setData yoksa net hata ver (sessiz başarısızlık olmasın)
+  if (typeof setData !== "function") {
+    alert("HATA: Sistem bileşeni bağlanamadı (setData yok).\nSayfayı yenileyip tekrar deneyin.");
+    if (typeof done === "function") done({ error: "setData yok", applied: 0, totalShots: 0, pmTriggered: [], pmSkipped: 0 });
+    return;
+  }
   var onlyRegular = preview.onlyRegular === true; // sadece düzenli çalışanlara uygula
+  var _num = function(v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; }; // metin/boş değerleri güvenle sayıya çevir
   var moldsCopy = (data.molds || []).map(function(m) { return _objectSpread({}, m); });
   // Düzenli çalışan kalıpları işaretle (aktif kalıp listesi)
   var regularMoldIds = {};
@@ -16132,8 +16153,10 @@ function applyProductionData(preview, data, setData, addAuditLog, user, done) {
   var addShots = function(moldId, shots) {
     var m = findM(moldId);
     if (!m) return;
-    m.pm_counter = (m.pm_counter || 0) + shots;
-    m.total_shots = (m.total_shots || 0) + shots;
+    var s = _num(shots);
+    if (s <= 0) return;
+    m.pm_counter = _num(m.pm_counter) + s;   // metin olsa bile doğru toplar
+    m.total_shots = _num(m.total_shots) + s;
   };
   var totalShots = 0, applied = 0;
 
@@ -16150,7 +16173,7 @@ function applyProductionData(preview, data, setData, addAuditLog, user, done) {
       // Eşit böl
       var per = mu.qty / mu.molds.length;
       mu.molds.forEach(function(m) {
-        var shots = Math.round(per / (parseInt(m.cavities) || 1));
+        var shots = Math.round(per / (_num(m.cavities) || 1));
         addShots(m.id, shots);
         totalShots += shots;
       });
@@ -16158,7 +16181,7 @@ function applyProductionData(preview, data, setData, addAuditLog, user, done) {
     } else if (mu.choice && mu.choice !== "SKIP") {
       var m = findM(mu.choice);
       if (m) {
-        var shots2 = Math.round(mu.qty / (parseInt(m.cavities) || 1));
+        var shots2 = Math.round(_num(mu.qty) / (_num(m.cavities) || 1));
         addShots(mu.choice, shots2);
         totalShots += shots2; applied++;
       }
@@ -16182,9 +16205,9 @@ function applyProductionData(preview, data, setData, addAuditLog, user, done) {
   var overdue = [];
   moldsCopy.forEach(function(m) {
     if (openPmMolds[m.id]) return;
-    var interval = m.pm_interval || 50000;
-    var pct = ((m.pm_counter || 0) / interval) * 100;
-    if (pct >= 100) overdue.push({ mold: m, pct: pct, interval: interval });
+    var interval = _num(m.pm_interval) || 50000;
+    var pct = (_num(m.pm_counter) / interval) * 100;
+    if (isFinite(pct) && pct >= 100) overdue.push({ mold: m, pct: pct, interval: interval });
   });
   overdue.sort(function(a, b) { return b.pct - a.pct; });
   var pmSkipped = Math.max(0, overdue.length - maxPmWos);
@@ -16194,7 +16217,7 @@ function applyProductionData(preview, data, setData, addAuditLog, user, done) {
       id: "LG-" + String(maxNum).padStart(3, "0"),
       mold_id: o.mold.id, type: "PM", status: "BEKLEMEDE",
       priority: o.pct >= 120 ? "KRİTİK" : "YÜKSEK",
-      description: "🔧 OTOMATİK PM — " + (o.mold.pm_counter||0).toLocaleString() + " baskıya ulaşıldı (eşik: " + o.interval.toLocaleString() + "). Periyodik bakım gerekli.",
+      description: "🔧 OTOMATİK PM — " + _num(o.mold.pm_counter).toLocaleString() + " baskıya ulaşıldı (eşik: " + o.interval.toLocaleString() + "). Periyodik bakım gerekli.",
       assigned: null, created_at: ts, reported_by: user ? user.id : "system", auto_pm: true
     });
     pmTriggered.push(o.mold.id + " (%" + Math.round(o.pct) + ")");
