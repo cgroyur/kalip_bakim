@@ -2,6 +2,10 @@
 const express     = require("express");
 const bcrypt      = require("bcryptjs");
 
+// ── TEK OTURUM YÖNETİMİ ──
+const ACTIVE_SESSIONS = {};
+function newSid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 10); }
+
 // Türkiye saati (UTC+3) — client nowStr() ile TUTARLI olması için
 function nowStrTR() {
   var d = new Date(Date.now() + 3 * 3600 * 1000); // UTC+3
@@ -151,7 +155,14 @@ app.use((req, res, next) => {
 function auth(req, res, next) {
   const h = req.headers.authorization;
   if (!h?.startsWith("Bearer ")) return res.status(401).json({ error: "Token gerekli" });
-  try { req.user = jwt.verify(h.slice(7), JWT_SECRET); next(); }
+  try {
+    const payload = jwt.verify(h.slice(7), JWT_SECRET);
+    const cur = ACTIVE_SESSIONS[payload.id];
+    if (payload.sid && cur && cur.sid !== payload.sid) {
+      return res.status(401).json({ error: "Bu hesap başka bir cihazdan açıldı. Oturumunuz sonlandırıldı.", session_takeover: true });
+    }
+    req.user = payload; next();
+  }
   catch { res.status(401).json({ error: "Geçersiz veya süresi dolmuş token" }); }
 }
 function adminOnly(req, res, next) {
@@ -167,9 +178,13 @@ app.post("/api/login", (req, res) => {
   const u = (DB.users||[]).find(x => x.username === uname && x.active);
   if (!u || !bcrypt.compareSync(password, u.password_hash))
     return res.status(401).json({ error: "Kullanıcı adı veya şifre hatalı" });
-  const token = jwt.sign({ id:u.id, username:u.username, role:u.role, name:u.name }, JWT_SECRET, { expiresIn:"30m" });
-  addAudit(u.id, u.name, u.role, "Giriş", "auth", null, `${u.name} sisteme giriş yaptı`);
-  res.json({ token, user: { id:u.id, name:u.name, role:u.role, username:u.username } });
+  const prev = ACTIVE_SESSIONS[u.id];
+  const sid = newSid();
+  ACTIVE_SESSIONS[u.id] = { sid, at: nowStrTR(), ua: String(req.headers["user-agent"] || "").slice(0, 80) };
+  const token = jwt.sign({ id:u.id, username:u.username, role:u.role, name:u.name, sid }, JWT_SECRET, { expiresIn:"30m" });
+  if (prev) addAudit(u.id, u.name, u.role, "Oturum Devralındı", "auth", null, `${u.name} yeni cihazdan giriş yaptı — önceki oturum sonlandırıldı`);
+  else addAudit(u.id, u.name, u.role, "Giriş", "auth", null, `${u.name} sisteme giriş yaptı`);
+  res.json({ token, user: { id:u.id, name:u.name, role:u.role, username:u.username }, takeover: !!prev });
 });
 
 app.post("/api/logout", auth, (req, res) => {

@@ -204,6 +204,41 @@ var _apiLoaded = false; // API'den veri yüklenene kadar persist engellenir
 var _lastSavedJSON = "";
 var _pendingData = null;
 var _deletedWoIds = []; // Bilinçli silinen WO'lar (merge için)
+
+// ── TEK OTURUM KORUMASI ──
+var _sessionKilled = false;
+function handleSessionTakeover() {
+  if (_sessionKilled) return;
+  _sessionKilled = true;
+  try { localStorage.removeItem("cmms_token"); } catch(e) {}
+  var ov = document.createElement("div");
+  ov.style.cssText = "position:fixed;inset:0;background:rgba(15,32,68,.92);z-index:999999;display:flex;align-items:center;justify-content:center;padding:20px";
+  ov.innerHTML = '<div style="background:#fff;border-radius:16px;max-width:420px;padding:28px;text-align:center">' +
+    '<div style="font-size:44px;margin-bottom:10px">&#128274;</div>' +
+    '<h2 style="font-size:18px;font-weight:800;color:#0f2044;margin-bottom:8px">Oturumunuz Sonland\u0131r\u0131ld\u0131</h2>' +
+    '<p style="font-size:13px;color:#6b7fa3;margin-bottom:18px">Bu hesap ba\u015Fka bir cihazdan a\u00E7\u0131ld\u0131. Ayn\u0131 anda tek oturum a\u00E7\u0131k olabilir.</p>' +
+    '<button id="_reLoginBtn" style="background:#1565c0;color:#fff;border:none;border-radius:10px;padding:11px 26px;font-size:14px;font-weight:700;cursor:pointer">Tekrar Giri\u015F Yap</button></div>';
+  document.body.appendChild(ov);
+  var b = document.getElementById("_reLoginBtn");
+  if (b) b.onclick = function() { window.location.reload(); };
+}
+(function() {
+  if (typeof window === "undefined" || !window.fetch) return;
+  var _of = window.fetch;
+  window.fetch = function() {
+    return _of.apply(this, arguments).then(function(res) {
+      try {
+        if (res && res.status === 401 && typeof res.clone === "function") {
+          res.clone().json().then(function(j) {
+            if (j && j.session_takeover) handleSessionTakeover();
+          }).catch(function(){});
+        }
+      } catch(e) {}
+      return res;
+    });
+  };
+})();
+
 var persist = function persist(d) {
   if (!CMMS_TOKEN || !_apiLoaded) return;
   _pendingData = d;
@@ -3543,7 +3578,21 @@ function AdminPanel(_ref19) {
         style: {
           fontSize: 11
         }
-      }, tech ? tech.name : "—"), /*#__PURE__*/React.createElement("td", {
+      }, (function() {
+        var _nm = [];
+        (wo.interventions || []).forEach(function(it) {
+          var _u = users.find(function(x) { return x.id === it.user; });
+          var _n = _u ? _u.name : it.user;
+          if (_n && _nm.indexOf(_n) < 0) _nm.push(_n);
+        });
+        if (tech && _nm.indexOf(tech.name) < 0) _nm.push(tech.name);
+        if (_nm.length === 0) return "—";
+        if (_nm.length === 1) return _nm[0];
+        return /*#__PURE__*/React.createElement("div", null,
+          /*#__PURE__*/React.createElement("span", { style: { color: "#7b1fa2", fontWeight: 700 } }, _nm.join(" - ")),
+          /*#__PURE__*/React.createElement("div", { style: { fontSize: 9, color: "#9aa5b4", marginTop: 1 } }, _nm.length + " kişi müdahale etti")
+        );
+      })()), /*#__PURE__*/React.createElement("td", {
         style: {
           fontWeight: 700
         }
@@ -15044,7 +15093,19 @@ function SysAdminPage(_ref) {
                 setProdPreview(function(prev) { return _objectSpread(_objectSpread({}, prev), { onlyRegular: c }); });
               }
             }),
-            React.createElement("span", { style:{ fontSize:12, fontWeight:600, color:"#1565c0" } }, "SADECE düzenli çalışan kalıplara uygula (önerilen — pilot için)")
+            React.createElement("span", { style:{ fontSize:12, fontWeight:600, color:"#1565c0" } }, "SADECE düzenli çalışan kalıplara uygula (işaretlemezseniz TÜM eşleşen referanslar sayaca eklenir)")
+          ),
+          React.createElement("div", { style:{ display:"flex", gap:10, alignItems:"center", marginTop:10, paddingTop:10, borderTop:"1px solid #c5daff", flexWrap:"wrap" } },
+            React.createElement("span", { style:{ fontSize:12, color:"#2d3748" } }, "Aynı anda açılacak azami PM iş emri:"),
+            React.createElement("input", {
+              type:"number", min:1, max:200, value: prodPreview.maxPmWos != null ? prodPreview.maxPmWos : 25,
+              style:{ width:70, padding:"6px 8px", border:"1px solid #c5daff", borderRadius:6, fontSize:13, fontWeight:700, textAlign:"center" },
+              onChange: function(e) {
+                var v = parseInt(e.target.value) || 1;
+                setProdPreview(function(prev) { return _objectSpread(_objectSpread({}, prev), { maxPmWos: v }); });
+              }
+            }),
+            React.createElement("span", { style:{ fontSize:10, color:"#6b7fa3" } }, "(en acil olanlar önce açılır)")
           )
         ),
 
@@ -15119,7 +15180,8 @@ function SysAdminPage(_ref) {
               applyProductionData(prodPreview, data, setData, addAuditLog, user, function(res) {
                 setProdPreview(null);
                 var msg = "✅ " + res.applied + " referans işlendi\n📈 " + res.totalShots.toLocaleString() + " baskı eklendi";
-                if (res.pmTriggered.length > 0) msg += "\n\n🔧 OTOMATİK PM AÇILDI:\n" + res.pmTriggered.join("\n");
+                if (res.pmTriggered.length > 0) msg += "\n\n🔧 " + res.pmTriggered.length + " OTOMATİK PM AÇILDI:\n" + res.pmTriggered.slice(0,15).join("\n") + (res.pmTriggered.length > 15 ? "\n... (+" + (res.pmTriggered.length-15) + ")" : "");
+                if (res.pmSkipped > 0) msg += "\n\n⏳ " + res.pmSkipped + " kalıp daha eşiği aştı, limit doldu. Sonraki yüklemede açılacak.";
                 alert(msg);
               });
             }
@@ -16102,32 +16164,39 @@ function applyProductionData(preview, data, setData, addAuditLog, user, done) {
     }
   });
 
-  // PM tetikleme
+  // PM tetikleme — O(n), limitli
   var pmTriggered = [];
   var newPmWos = [];
   var ts = nowStr();
+  var maxPmWos = preview.maxPmWos != null ? preview.maxPmWos : 25;
+  var openPmMolds = {};
+  (data.wos || []).forEach(function(w) {
+    if (w.type === "PM" && w.status !== "KAPATILDI") openPmMolds[w.mold_id] = true;
+  });
+  var maxNum = 0;
+  (data.wos || []).forEach(function(w) {
+    var p = String(w.id || "").split("-"); var n = parseInt(p[p.length-1]);
+    if (!isNaN(n) && n > maxNum) maxNum = n;
+  });
+  var overdue = [];
   moldsCopy.forEach(function(m) {
+    if (openPmMolds[m.id]) return;
     var interval = m.pm_interval || 50000;
     var pct = ((m.pm_counter || 0) / interval) * 100;
-    if (pct >= 100) {
-      var hasOpenPM = (data.wos || []).concat(newPmWos).some(function(w) {
-        return w.mold_id === m.id && w.type === "PM" && w.status !== "KAPATILDI";
-      });
-      if (!hasOpenPM) {
-        var nums = (data.wos || []).concat(newPmWos).map(function(w) {
-          var p = (w.id || "").split("-"); var n = parseInt(p[p.length-1]); return isNaN(n) ? 0 : n;
-        });
-        var next = (nums.length ? Math.max.apply(Math, nums) : 0) + 1;
-        newPmWos.push({
-          id: "LG-" + String(next).padStart(3, "0"),
-          mold_id: m.id, type: "PM", status: "BEKLEMEDE",
-          priority: pct >= 120 ? "KRİTİK" : "YÜKSEK",
-          description: "🔧 OTOMATİK PM — " + (m.pm_counter||0).toLocaleString() + " baskıya ulaşıldı (eşik: " + interval.toLocaleString() + "). Periyodik bakım gerekli.",
-          assigned: null, created_at: ts, reported_by: user ? user.id : "system", auto_pm: true
-        });
-        pmTriggered.push(m.id + " (%" + Math.round(pct) + ")");
-      }
-    }
+    if (pct >= 100) overdue.push({ mold: m, pct: pct, interval: interval });
+  });
+  overdue.sort(function(a, b) { return b.pct - a.pct; });
+  var pmSkipped = Math.max(0, overdue.length - maxPmWos);
+  overdue.slice(0, maxPmWos).forEach(function(o) {
+    maxNum++;
+    newPmWos.push({
+      id: "LG-" + String(maxNum).padStart(3, "0"),
+      mold_id: o.mold.id, type: "PM", status: "BEKLEMEDE",
+      priority: o.pct >= 120 ? "KRİTİK" : "YÜKSEK",
+      description: "🔧 OTOMATİK PM — " + (o.mold.pm_counter||0).toLocaleString() + " baskıya ulaşıldı (eşik: " + o.interval.toLocaleString() + "). Periyodik bakım gerekli.",
+      assigned: null, created_at: ts, reported_by: user ? user.id : "system", auto_pm: true
+    });
+    pmTriggered.push(o.mold.id + " (%" + Math.round(o.pct) + ")");
   });
 
   // Düzenli çalışan kalıplara işaret koy (aktif kalıp listesi için)
@@ -16145,15 +16214,19 @@ function applyProductionData(preview, data, setData, addAuditLog, user, done) {
     if (newPmWos.length > 0) nd.wos = (prev.wos || []).concat(newPmWos);
     return nd;
   });
-  newPmWos.forEach(function(wo) {
-    fetch("/api/workorders", { method: "POST", headers: apiHeaders(), body: JSON.stringify(wo) }).catch(function(){});
-  });
+  if (newPmWos.length > 0) {
+    (function sendBatch(i) {
+      if (i >= newPmWos.length) return;
+      fetch("/api/workorders", { method: "POST", headers: apiHeaders(), body: JSON.stringify(newPmWos[i]) })
+        .catch(function(){}).then(function() { sendBatch(i + 1); });
+    })(0);
+  }
   addAuditLog && addAuditLog({
     user_id: user ? user.id : "system", user_name: user ? user.name : "Sistem", role: user ? user.role : "system",
     action: "Üretim Verisi Yüklendi", entity_type: "system", entity_id: "production",
     detail: applied + " referans işlendi, " + totalShots.toLocaleString() + " baskı eklendi" + (pmTriggered.length ? ", PM: " + pmTriggered.join(", ") : "")
   });
-  done({ applied: applied, totalShots: totalShots, pmTriggered: pmTriggered });
+  done({ applied: applied, totalShots: totalShots, pmTriggered: pmTriggered, pmSkipped: pmSkipped, pmOverdue: overdue.length });
 }
 
 // Referans bazlı şablon indir
@@ -16246,18 +16319,29 @@ function InterventionTable(_ref) {
             React.createElement("td", { style: Object.assign({}, tdS, { whiteSpace: "nowrap", color: "#4a5568" }) }, fmtD(w.assigned_at)),
             React.createElement("td", { style: Object.assign({}, tdS, { whiteSpace: "nowrap", color: "#4a5568" }) }, fmtD(w.started_at)),
             // Planlanan bitiş — GİRİLEBİLİR
-            React.createElement("td", { style: tdS },
-              React.createElement("input", {
-                type: "datetime-local", defaultValue: w.planned_end || "",
-                style: { fontSize: 10, padding: "4px 6px", border: overdue ? "2px solid #e65100" : "1px solid #dde3ea", borderRadius: 5, width: 150 },
+            React.createElement("td", { style: tdS }, (function() {
+              var locked = w.status === "KAPATILDI" || !!w.planned_end;
+              if (locked) {
+                return React.createElement("div", null,
+                  React.createElement("div", {
+                    style: { fontSize: 10, padding: "5px 7px", background: "#f5f7fb", border: "1px solid #e8edf2", borderRadius: 5,
+                             color: w.planned_end ? "#2d3748" : "#9aa5b4", fontWeight: 600 }
+                  }, "🔒 " + (w.planned_end ? String(w.planned_end).replace("T", " ").slice(0, 16) : "—")),
+                  overdue && React.createElement("div", { style: { fontSize: 9, color: "#e65100", fontWeight: 700, marginTop: 2 } }, "⚠ Süre aşıldı!")
+                );
+              }
+              return React.createElement("input", {
+                type: "datetime-local", defaultValue: "",
+                style: { fontSize: 10, padding: "4px 6px", border: "1px solid #dde3ea", borderRadius: 5, width: 150 },
+                title: "Bir kez girilir, sonra değiştirilemez",
                 onBlur: function(e) {
                   var v = e.target.value;
-                  if (v !== (w.planned_end || "")) {
-                    updWO(w.id, function(x) { x.planned_end = v; return x; });
-                  }
+                  if (!v) return;
+                  if (!window.confirm("Planlanan bitiş tarihi BİR KEZ girilir ve sonra değiştirilemez.\n\n" + v.replace("T", " ") + "\n\nOnaylıyor musunuz?")) { e.target.value = ""; return; }
+                  updWO(w.id, function(x) { x.planned_end = v; x.planned_end_set_at = nowStr(); return x; });
                 }
-              }),
-              overdue && React.createElement("div", { style: { fontSize: 9, color: "#e65100", fontWeight: 700, marginTop: 2 } }, "⚠ Süre aşıldı!")),
+              });
+            })()),
             React.createElement("td", { style: Object.assign({}, tdS, { whiteSpace: "nowrap", color: w.closed_at ? "#1a6b3c" : "#9aa5b4", fontWeight: w.closed_at ? 700 : 400 }) }, fmtD(w.closed_at)),
             React.createElement("td", { style: Object.assign({}, tdS, { whiteSpace: "nowrap" }) }, assignedUser ? assignedUser.name : (w.assigned || "—")),
             React.createElement("td", { style: Object.assign({}, tdS, { maxWidth: 180 }) }, (function() {
