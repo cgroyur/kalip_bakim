@@ -3845,12 +3845,14 @@ function AdminPanel(_ref19) {
       jobs: "Arıza Havuzu", pool: "Arıza Havuzu", myjobs: "İşlerim", create_wo: "İş Emri Oluştur",
       matrix: "Teknisyen Matrisi", reports: "Raporlar", critical: "Kritik Analiz",
       spareparts: "Yedek Parça", users: "Kullanıcılar", audit: "Denetim İzi",
-      sysadmin: "Sistem Yönetimi", tvmode: "TV Modu", report: "Arıza Bildir", history: "Geçmiş"
+      sysadmin: "Sistem Yönetimi", tvmode: "TV Modu", report: "Arıza Bildir", history: "Geçmiş",
+      techmolds: "Kalıplar (Görüntüle)", techpool: "Arıza Havuzu", waiting: "Beklemeye Alınan", done: "Tamamlananlar",
+      mtable: "Müdahale Tablosu", confirm: "Onay Bekleyenler"
     };
     var roleDefaults = {
       admin: Object.keys(allPages),
-      leader: ["dash", "myjobs", "inventory", "jobs", "matrix", "molds", "reports", "critical", "tvmode"],
-      tech: ["my", "techpool", "waiting", "done", "tvmode"],
+      leader: ["dash", "myjobs", "inventory", "jobs", "matrix", "molds", "reports", "critical", "tvmode", "mtable"],
+      tech: ["my", "techpool", "techmolds", "waiting", "done", "tvmode"],
       op: ["report", "history"]
     };
     var nonAdminUsers = (data.users || []).filter(function(u) { return u.role !== "admin"; });
@@ -3898,7 +3900,7 @@ function AdminPanel(_ref19) {
                     var current = (u.custom_pages || roleDefaults[u.role] || []).slice();
                     var idx = current.indexOf(pg);
                     if (idx >= 0) current.splice(idx, 1); else current.push(pg);
-                    updUser(u.id, { custom_pages: current });
+                    updUser(u.id, function(uu) { uu.custom_pages = current; return uu; });
                     addAuditLog && addAuditLog({ user_id: user.id, user_name: user.name, role: "admin", action: "Yetki Değiştirildi", entity_type: "user", entity_id: u.id, detail: u.name + " → " + pg + (idx >= 0 ? " kaldırıldı" : " eklendi") });
                   },
                   style: {
@@ -3912,7 +3914,7 @@ function AdminPanel(_ref19) {
             ),
             hasCustom && React.createElement("button", {
               onClick: function() {
-                updUser(u.id, { custom_pages: null });
+                updUser(u.id, function(uu) { uu.custom_pages = null; return uu; });
                 addAuditLog && addAuditLog({ user_id: user.id, user_name: user.name, role: "admin", action: "Yetki Sıfırlandı", entity_type: "user", entity_id: u.id, detail: u.name + " rol varsayılanına döndü" });
               },
               style: { marginTop: 10, padding: "6px 12px", borderRadius: 6, fontSize: 10, fontWeight: 600, cursor: "pointer", border: "1px solid #e0e0e0", background: "#fff", color: "#6b7fa3", width: "100%" }
@@ -5999,7 +6001,8 @@ function TechPanel(_ref27) {
             var pc = pct >= 90 ? "#c62828" : pct >= 70 ? "#e65100" : "#1a6b3c";
             var openN = (data.wos || []).filter(function(w){ return w.mold_id === m.id && w.status !== "KAPATILDI"; }).length;
             return React.createElement("tr", { key:m.id, style:{ borderBottom:"1px solid #eef2f7" } },
-              React.createElement("td", { style:{ padding:"8px", fontSize:11, fontWeight:700, color:"#0f2044", whiteSpace:"nowrap" } }, m.id),
+              React.createElement("td", { style:{ padding:"8px", fontSize:11, fontWeight:700, color:"#1565c0", whiteSpace:"nowrap", cursor:"pointer" },
+                onClick: function() { openMold(m.id); } }, m.id),
               React.createElement("td", { style:{ padding:"8px", fontSize:11, color:"#4a5568" } }, (m.part_name || "").slice(0,40)),
               React.createElement("td", { style:{ padding:"8px", fontSize:11 } }, (m.cavities || "—") + ""),
               React.createElement("td", { style:{ padding:"8px", fontSize:11 } },
@@ -15329,7 +15332,7 @@ function SysAdminPage(_ref) {
     React.createElement("div", {className:"card", style:{marginBottom:16, borderLeft:"4px solid #1a6b3c"}},
       React.createElement("div", {className:"section-title", style:{marginBottom:8, display:"flex", alignItems:"center", gap:8}},
         "📊 Üretim Verisi Yükle (Otomatik PM)",
-        React.createElement("span", {style:{fontSize:9, background:"#1a6b3c", color:"#fff", padding:"2px 8px", borderRadius:10, fontWeight:700}}, "v15.5")),
+        React.createElement("span", {style:{fontSize:9, background:"#1a6b3c", color:"#fff", padding:"2px 8px", borderRadius:10, fontWeight:700}}, "v15.6")),
       React.createElement("p", {style:{fontSize:12, color:"#6b7fa3", marginBottom:6}},
         "Ham üretim verinizi (Referans | Adet | Tarih) olduğu gibi yükleyin. Sistem negatifleri düşer, anormal değerleri atlar, her referansın kaç günde çalıştığını sayar."),
       React.createElement("p", {style:{fontSize:11, color:"#1a6b3c", marginBottom:14, fontWeight:600}},
