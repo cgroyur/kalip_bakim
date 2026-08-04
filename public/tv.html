@@ -99,14 +99,26 @@ function render(d){
   h+='<div class="grid main-grid">';
   // Pool
   h+='<div class="card" style="border:1.5px solid #e65100"><h3 style="font-size:19px;font-weight:800;color:#ffb74d;margin-bottom:14px">🔧 '+t("pool")+' — '+t("poolSub")+' ('+((d.poolWos||[]).length)+')</h3>';
-  if(!(d.poolWos||[]).length)h+='<div class="empty">'+t("noPool")+'</div>';
-  (d.poolWos||[]).forEach(function(w){
-    h+='<div style="background:#1e3556;border-radius:10px;padding:13px 15px;margin-bottom:8px;border:1px solid #2a4a7a;display:flex;justify-content:space-between;align-items:center">';
-    h+='<div><div style="font-weight:800;color:#fff;font-size:17px">'+w.id+'</div><div style="color:#a8c5e8;font-size:14px;margin-top:3px;font-weight:600">'+w.mold_id+' · '+w.type+'</div><div style="color:#ffb74d;font-size:13px;margin-top:2px;font-weight:600">🕐 '+(w.created_at||'').slice(5,16)+'</div>';
-    h+='<div style="color:#7fa8d4;font-size:13px;margin-top:2px">'+w.description+'</div></div>';
-    h+='<div style="text-align:right"><span class="badge p-'+w.priority+'">'+w.priority+'</span><br>';
-    h+='<button class="btn-claim" onclick="openClaim(\''+w.id+"','"+w.mold_id+"','"+w.type+"','"+(w.description||"").replace(/'/g,"")+"')\">🤚 "+t("claim")+'</button></div></div>';
-  });
+  h+='<div style="display:flex;gap:12px">';
+  var _poolAriz=(d.poolWos||[]).filter(function(w){return w.type!=="PM";});
+  var _poolPm=(d.poolWos||[]).filter(function(w){return w.type==="PM";});
+  var _poolCard=function(w){
+    var c='<div style="background:#1e3556;border-radius:10px;padding:13px 15px;margin-bottom:8px;border:1px solid #2a4a7a;display:flex;justify-content:space-between;align-items:center">';
+    c+='<div><div style="font-weight:800;color:#fff;font-size:17px">'+w.id+'</div><div style="color:#a8c5e8;font-size:14px;margin-top:3px;font-weight:600">'+w.mold_id+' · '+w.type+'</div><div style="color:#ffb74d;font-size:13px;margin-top:2px;font-weight:600">🕐 '+(w.created_at||'').slice(5,16)+'</div>';
+    c+='<div style="color:#7fa8d4;font-size:13px;margin-top:2px">'+w.description+'</div></div>';
+    c+='<div style="text-align:right"><span class="badge p-'+w.priority+'">'+w.priority+'</span><br>';
+    c+='<button class="btn-claim" onclick="openClaim(\''+w.id+"','"+w.mold_id+"','"+w.type+"','"+(w.description||"").replace(/'/g,"")+"')\">🤚 "+t("claim")+'</button></div></div>';
+    return c;
+  };
+  h+='<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:#ff8a80;margin-bottom:8px">🔴 Arızalar ('+_poolAriz.length+')</div>';
+  if(!_poolAriz.length)h+='<div class="empty" style="padding:16px">'+t("noPool")+'</div>';
+  _poolAriz.forEach(function(w){h+=_poolCard(w);});
+  h+='</div>';
+  h+='<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:#4dd0e1;margin-bottom:8px">🔧 Planlı Bakım ('+_poolPm.length+')</div>';
+  if(!_poolPm.length)h+='<div class="empty" style="padding:16px">'+t("noPool")+'</div>';
+  _poolPm.forEach(function(w){h+=_poolCard(w);});
+  h+='</div>';
+  h+='</div>';
   h+='</div>';
   // Progress
   h+='<div class="card" style="border:1.5px solid #1565c0"><h3 style="font-size:19px;font-weight:800;color:#90caf9;margin-bottom:14px">🔄 '+t("progress")+' ('+((d.inProgressWos||[]).length)+')</h3>';

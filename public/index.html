@@ -1125,7 +1125,8 @@ function App() {
   }, user.role === "admin" && /*#__PURE__*/React.createElement(AdminPanel, ctx), user.role === "leader" && /*#__PURE__*/React.createElement(LeaderPanel, ctx), user.role === "op" && /*#__PURE__*/React.createElement(OperatorPanel, ctx), user.role === "tech" && /*#__PURE__*/React.createElement(TechPanel, ctx))), moldModal && /*#__PURE__*/React.createElement(MoldHistoryModal, {
     moldId: moldModal,
     data: data,
-    updMold: updMold,
+    updMold: (user && (user.role === "admin" || user.role === "leader")) ? updMold : null,
+    readOnly: !(user && (user.role === "admin" || user.role === "leader")),
     onClose: function onClose() {
       return setMoldModal(null);
     }
@@ -4311,65 +4312,7 @@ function LeaderPanel(_ref24) {
     }));
   }
   if (page === "jobs") {
-    return /*#__PURE__*/React.createElement("div", {
-      className: "anim"
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "card"
-    }, /*#__PURE__*/React.createElement("div", {
-      style: {
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: 10
-      }
-    }, /*#__PURE__*/React.createElement("div", {
-      className: "section-title",
-      style: {
-        margin: 0
-      }
-    }, "\uD83D\uDEA8 Ar\u0131za Havuzu"), /*#__PURE__*/React.createElement("button", {
-      className: "btn btn-sm",
-      style: {
-        background: "#7b1fa2",
-        color: "#fff"
-      },
-      onClick: function onClick() {
-        return setShowManualWO(true);
-      }
-    }, "\u2795 Manuel \u0130\u015F Emri")), showManualWO && /*#__PURE__*/React.createElement(ManualWOModal, {
-      molds: molds,
-      wos: wos,
-      users: users,
-      onSave: function onSave(wo) {
-        addWO(wo);
-        try {
-          var _WO_TYPE_INFO$wo$type8;
-          addAuditLog && addAuditLog({
-            user_id: (user === null || user === void 0 ? void 0 : user.id) || "L",
-            user_name: (user === null || user === void 0 ? void 0 : user.name) || "Lider",
-            role: "leader",
-            action: "İş Emri Açıldı",
-            entity_type: "wo",
-            entity_id: wo.id,
-            detail: (wo.mold_id || "") + " — " + (((_WO_TYPE_INFO$wo$type8 = WO_TYPE_INFO[wo.type]) === null || _WO_TYPE_INFO$wo$type8 === void 0 ? void 0 : _WO_TYPE_INFO$wo$type8.label) || wo.type) + ": " + (wo.description || "").substring(0, 60)
-          });
-        } catch (e) {}
-        setShowManualWO(false);
-      },
-      onClose: function onClose() {
-        return setShowManualWO(false);
-      },
-      currentUser: data.users.find(function (u) {
-        return u.role === "leader";
-      }) || data.users[1]
-    }), unassigned.length === 0 && /*#__PURE__*/React.createElement("div", {
-      style: {
-        color: "#aaa",
-        fontSize: 12,
-        textAlign: "center",
-        padding: 20
-      }
-    }, "Atanmam\u0131\u015F i\u015F yok \u2705"), unassigned.map(function (wo) {
+    var _renderLeaderCard = function (wo) {
       return /*#__PURE__*/React.createElement("div", {
         key: wo.id,
         style: {
@@ -4437,7 +4380,59 @@ function LeaderPanel(_ref24) {
           return setSelWO(wo);
         }
       }, "Ata")));
-    })), selWO && /*#__PURE__*/React.createElement(AssignModal, {
+    };
+    return /*#__PURE__*/React.createElement("div", {
+      className: "anim"
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "card"
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        marginBottom: 10
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      className: "section-title",
+      style: {
+        margin: 0
+      }
+    }, "\uD83D\uDEA8 Ar\u0131za Havuzu"), /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-sm",
+      style: {
+        background: "#7b1fa2",
+        color: "#fff"
+      },
+      onClick: function onClick() {
+        return setShowManualWO(true);
+      }
+    }, "\u2795 Manuel \u0130\u015F Emri")), showManualWO && /*#__PURE__*/React.createElement(ManualWOModal, {
+      molds: molds,
+      wos: wos,
+      users: users,
+      onSave: function onSave(wo) {
+        addWO(wo);
+        try {
+          var _WO_TYPE_INFO$wo$type8;
+          addAuditLog && addAuditLog({
+            user_id: (user === null || user === void 0 ? void 0 : user.id) || "L",
+            user_name: (user === null || user === void 0 ? void 0 : user.name) || "Lider",
+            role: "leader",
+            action: "İş Emri Açıldı",
+            entity_type: "wo",
+            entity_id: wo.id,
+            detail: (wo.mold_id || "") + " — " + (((_WO_TYPE_INFO$wo$type8 = WO_TYPE_INFO[wo.type]) === null || _WO_TYPE_INFO$wo$type8 === void 0 ? void 0 : _WO_TYPE_INFO$wo$type8.label) || wo.type) + ": " + (wo.description || "").substring(0, 60)
+          });
+        } catch (e) {}
+        setShowManualWO(false);
+      },
+      onClose: function onClose() {
+        return setShowManualWO(false);
+      },
+      currentUser: data.users.find(function (u) {
+        return u.role === "leader";
+      }) || data.users[1]
+    }), React.createElement(SplitPoolView, { wos: unassigned, renderCard: _renderLeaderCard, emptyText: "Atanmamış iş yok ✅" })), selWO && /*#__PURE__*/React.createElement(AssignModal, {
       wo: selWO,
       matrix: matrix,
       onAssign: assign,
@@ -15334,7 +15329,7 @@ function SysAdminPage(_ref) {
     React.createElement("div", {className:"card", style:{marginBottom:16, borderLeft:"4px solid #1a6b3c"}},
       React.createElement("div", {className:"section-title", style:{marginBottom:8, display:"flex", alignItems:"center", gap:8}},
         "📊 Üretim Verisi Yükle (Otomatik PM)",
-        React.createElement("span", {style:{fontSize:9, background:"#1a6b3c", color:"#fff", padding:"2px 8px", borderRadius:10, fontWeight:700}}, "v15.4")),
+        React.createElement("span", {style:{fontSize:9, background:"#1a6b3c", color:"#fff", padding:"2px 8px", borderRadius:10, fontWeight:700}}, "v15.5")),
       React.createElement("p", {style:{fontSize:12, color:"#6b7fa3", marginBottom:6}},
         "Ham üretim verinizi (Referans | Adet | Tarih) olduğu gibi yükleyin. Sistem negatifleri düşer, anormal değerleri atlar, her referansın kaç günde çalıştığını sayar."),
       React.createElement("p", {style:{fontSize:11, color:"#1a6b3c", marginBottom:14, fontWeight:600}},
