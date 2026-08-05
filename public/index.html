@@ -1056,6 +1056,10 @@ function App() {
     users: data.users,
     onLogin: setUser
   });
+  if (user.must_change_password) return /*#__PURE__*/React.createElement(PasswordChangeModal, {
+    forced: true,
+    onDone: function() { setUser(function(u) { return _objectSpread(_objectSpread({}, u), {}, { must_change_password: false }); }); }
+  });
   var ctx = {
     data: data,
     user: user,
@@ -1087,6 +1091,7 @@ function App() {
     className: "app-shell"
   }, /*#__PURE__*/React.createElement(Sidebar, {
     user: user,
+    setUser: setUser,
     page: page,
     setPage: setPage,
     onLogout: function onLogout() {
@@ -1182,6 +1187,60 @@ function pageTitle(r, p) {
   var _PT$r;
   return ((_PT$r = PT[r]) === null || _PT$r === void 0 ? void 0 : _PT$r[p]) || "Panel";
 }
+// ── ŞİFRE DEĞİŞTİRME (zorunlu ilk giriş veya isteğe bağlı) ──
+function PasswordChangeModal(_ref0) {
+  var forced = _ref0.forced, onDone = _ref0.onDone, onCancel = _ref0.onCancel;
+  var _c1 = useState(""), _c2 = _slicedToArray(_c1, 2), cur = _c2[0], setCur = _c2[1];
+  var _n1 = useState(""), _n2 = _slicedToArray(_n1, 2), np = _n2[0], setNp = _n2[1];
+  var _n3 = useState(""), _n4 = _slicedToArray(_n3, 2), np2 = _n4[0], setNp2 = _n4[1];
+  var _e1 = useState(""), _e2 = _slicedToArray(_e1, 2), err = _e2[0], setErr = _e2[1];
+  var _l1 = useState(false), _l2 = _slicedToArray(_l1, 2), loading = _l2[0], setLoading = _l2[1];
+  var submit = function() {
+    setErr("");
+    if (!cur.trim() || !np.trim()) { setErr("Tüm alanları doldurun."); return; }
+    if (np.length < 6) { setErr("Yeni şifre en az 6 karakter olmalı."); return; }
+    if (np !== np2) { setErr("Yeni şifreler eşleşmiyor."); return; }
+    setLoading(true);
+    fetch("/api/change-password", {
+      method: "POST", headers: apiHeaders(),
+      body: JSON.stringify({ currentPassword: cur, newPassword: np })
+    }).then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+      .then(function(res) {
+        setLoading(false);
+        if (!res.ok) { setErr(res.j.error || "Şifre değiştirilemedi."); return; }
+        onDone();
+      })
+      .catch(function() { setLoading(false); setErr("Sunucuya bağlanılamadı."); });
+  };
+  return React.createElement("div", {
+    style: { position: "fixed", inset: 0, background: "rgba(15,32,68,.92)", zIndex: 999999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }
+  }, React.createElement("div", { style: { background: "#fff", borderRadius: 16, maxWidth: 420, width: "100%", padding: 28 } },
+    React.createElement("div", { style: { fontSize: 36, textAlign: "center", marginBottom: 8 } }, "🔒"),
+    React.createElement("h2", { style: { fontSize: 17, fontWeight: 800, color: "#0f2044", textAlign: "center", marginBottom: 6 } },
+      forced ? "Şifrenizi Değiştirin" : "Şifre Değiştir"),
+    forced && React.createElement("p", { style: { fontSize: 12, color: "#6b7fa3", textAlign: "center", marginBottom: 18 } },
+      "Güvenlik nedeniyle devam etmeden önce şifrenizi değiştirmeniz gerekiyor."),
+    React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: "#2d3748", display: "block", marginBottom: 5 } }, "Mevcut Şifre"),
+    React.createElement("input", { type: "password", className: "form-input", style: { width: "100%", marginBottom: 12 }, value: cur, onChange: function(e) { setCur(e.target.value); }, autoFocus: true }),
+    React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: "#2d3748", display: "block", marginBottom: 5 } }, "Yeni Şifre (en az 6 karakter)"),
+    React.createElement("input", { type: "password", className: "form-input", style: { width: "100%", marginBottom: 12 }, value: np, onChange: function(e) { setNp(e.target.value); } }),
+    React.createElement("label", { style: { fontSize: 11, fontWeight: 700, color: "#2d3748", display: "block", marginBottom: 5 } }, "Yeni Şifre (tekrar)"),
+    React.createElement("input", { type: "password", className: "form-input", style: { width: "100%", marginBottom: 14 }, value: np2, onChange: function(e) { setNp2(e.target.value); },
+      onKeyDown: function(e) { if (e.key === "Enter") submit(); } }),
+    err && React.createElement("div", { style: { color: "#c62828", fontSize: 12, marginBottom: 12, textAlign: "center" } }, err),
+    React.createElement("div", { style: { display: "flex", gap: 10 } },
+      !forced && React.createElement("button", {
+        className: "btn", style: { flex: 1, background: "#fff", border: "1px solid #dde3ea", color: "#4a5568", fontWeight: 700, padding: "11px 0" },
+        onClick: onCancel
+      }, "İptal"),
+      React.createElement("button", {
+        className: "btn", style: { flex: 1, background: "#1565c0", color: "#fff", fontWeight: 800, padding: "11px 0" },
+        onClick: submit, disabled: loading
+      }, loading ? "⏳..." : "✅ Değiştir")
+    )
+  ));
+}
+
 function LoginScreen(_ref) {
   var users = _ref.users, onLogin = _ref.onLogin;
   var _s1=useState(""),_s2=_slicedToArray(_s1,2),un=_s2[0],setUn=_s2[1];
@@ -1210,7 +1269,7 @@ function LoginScreen(_ref) {
         _apiLoaded = true;
       }
       setLoading(false);
-      onLogin(result.user);
+      onLogin(_objectSpread(_objectSpread({}, result.user), {}, { must_change_password: !!result.must_change_password }));
     } catch(e) {
       setLoading(false);
       setErr("Sunucuya bağlanılamadı. Lütfen tekrar deneyin.");
@@ -1261,6 +1320,7 @@ function LoginScreen(_ref) {
 
 function Sidebar(_ref2) {
   var user = _ref2.user,
+    setUser = _ref2.setUser,
     page = _ref2.page,
     setPage = _ref2.setPage,
     onLogout = _ref2.onLogout,
@@ -1525,7 +1585,7 @@ function Sidebar(_ref2) {
       fontSize: 9,
       color: "#7fa8d4"
     }
-  }, RL[user.role]))), /*#__PURE__*/React.createElement("button", {
+  }, RL[user.role]))), /*#__PURE__*/React.createElement(SidebarPasswordChangeTrigger, { setUser: setUser }), /*#__PURE__*/React.createElement("button", {
     className: "btn btn-ghost btn-sm",
     style: {
       width: "100%",
@@ -1533,6 +1593,23 @@ function Sidebar(_ref2) {
     },
     onClick: onLogout
   }, "\xC7\u0131k\u0131\u015F Yap")));
+}
+
+// Sidebar'daki "Şifre Değiştir" butonu için sarmalayıcı — App seviyesinde state tutulur
+function SidebarPasswordChangeTrigger(_ref9) {
+  var setUser = _ref9.setUser;
+  var _spc1 = useState(false), _spc2 = _slicedToArray(_spc1, 2), show = _spc2[0], setShow = _spc2[1];
+  return React.createElement(React.Fragment, null,
+    React.createElement("button", {
+      className: "btn btn-ghost btn-sm", style: { width: "100%", justifyContent: "center", marginBottom: 6 },
+      onClick: function() { setShow(true); }
+    }, "🔑 Şifre Değiştir"),
+    show && React.createElement(PasswordChangeModal, {
+      forced: false,
+      onCancel: function() { setShow(false); },
+      onDone: function() { setShow(false); }
+    })
+  );
 }
 function MoldHistoryModal(_ref3) {
   var moldId = _ref3.moldId,

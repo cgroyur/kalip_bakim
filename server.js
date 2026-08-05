@@ -13,33 +13,45 @@ function nowStrTR() {
 }
 
 const SEED_USERS = () => [
-  { id:"U001", name:"Admin Yönetici", role:"admin", username:"admin", password_hash: bcrypt.hashSync("admin123",10), active:true },
-  { id:"U002", name:"Uğur Bükücü", role:"admin", username:"ugur.bukucu", password_hash: bcrypt.hashSync("1234",10), active:true },
-  { id:"U003", name:"Ersin Donat", role:"leader", username:"ersin.donat", password_hash: bcrypt.hashSync("1234",10), active:true },
-  { id:"U004", name:"İbrahim Kaya", role:"tech", username:"ibrahim.kaya", password_hash: bcrypt.hashSync("1234",10), active:true },
-  { id:"U005", name:"Bilal Aslan", role:"tech", username:"bilal.aslan", password_hash: bcrypt.hashSync("1234",10), active:true },
-  { id:"U006", name:"Doğan Tor", role:"tech", username:"dogan.tor", password_hash: bcrypt.hashSync("1234",10), active:true },
-  { id:"U007", name:"Yusuf Şen", role:"tech", username:"yusuf.sen", password_hash: bcrypt.hashSync("1234",10), active:true },
-  { id:"U008", name:"Hamdi Çakır", role:"tech", username:"hamdi.cakir", password_hash: bcrypt.hashSync("1234",10), active:true },
-  { id:"U009", name:"Ferhat Koçuk", role:"op", username:"ferhat.kocuk", password_hash: bcrypt.hashSync("1234",10), active:true },
-  { id:"U010", name:"Mehmet Kahraman", role:"op", username:"mehmet.kahraman", password_hash: bcrypt.hashSync("1234",10), active:true },
-  { id:"U011", name:"Mehmet Yılmaz", role:"op", username:"mehmet.yilmaz", password_hash: bcrypt.hashSync("1234",10), active:true },
-  { id:"U012", name:"İsmail Açıkgöz", role:"op", username:"ismail.acikgoz", password_hash: bcrypt.hashSync("1234",10), active:true },
-  { id:"U013", name:"Murat Akgün", role:"op", username:"murat.akgun", password_hash: bcrypt.hashSync("1234",10), active:true },
-  { id:"U014", name:"Gökhan Koçak", role:"op", username:"gokhan.kocak", password_hash: bcrypt.hashSync("1234",10), active:true },
-  { id:"U015", name:"Cüneyt Dincel", role:"op", username:"cuneyt.dincel", password_hash: bcrypt.hashSync("1234",10), active:true },
-  { id:"U016", name:"Gökhan Karadeniz", role:"op", username:"gokhan.karadeniz", password_hash: bcrypt.hashSync("1234",10), active:true },
-  { id:"U017", name:"Muhammed Akyol", role:"op", username:"muhammed.akyol", password_hash: bcrypt.hashSync("1234",10), active:true }
+  { id:"U001", name:"Admin Yönetici", role:"admin", username:"admin", password_hash: bcrypt.hashSync("admin123",10), active:true, must_change_password:true },
+  { id:"U002", name:"Uğur Bükücü", role:"admin", username:"ugur.bukucu", password_hash: bcrypt.hashSync("1234",10), active:true, must_change_password:true },
+  { id:"U003", name:"Ersin Donat", role:"leader", username:"ersin.donat", password_hash: bcrypt.hashSync("1234",10), active:true, must_change_password:true },
+  { id:"U004", name:"İbrahim Kaya", role:"tech", username:"ibrahim.kaya", password_hash: bcrypt.hashSync("1234",10), active:true, must_change_password:true },
+  { id:"U005", name:"Bilal Aslan", role:"tech", username:"bilal.aslan", password_hash: bcrypt.hashSync("1234",10), active:true, must_change_password:true },
+  { id:"U006", name:"Doğan Tor", role:"tech", username:"dogan.tor", password_hash: bcrypt.hashSync("1234",10), active:true, must_change_password:true },
+  { id:"U007", name:"Yusuf Şen", role:"tech", username:"yusuf.sen", password_hash: bcrypt.hashSync("1234",10), active:true, must_change_password:true },
+  { id:"U008", name:"Hamdi Çakır", role:"tech", username:"hamdi.cakir", password_hash: bcrypt.hashSync("1234",10), active:true, must_change_password:true },
+  { id:"U009", name:"Ferhat Koçuk", role:"op", username:"ferhat.kocuk", password_hash: bcrypt.hashSync("1234",10), active:true, must_change_password:true },
+  { id:"U010", name:"Mehmet Kahraman", role:"op", username:"mehmet.kahraman", password_hash: bcrypt.hashSync("1234",10), active:true, must_change_password:true },
+  { id:"U011", name:"Mehmet Yılmaz", role:"op", username:"mehmet.yilmaz", password_hash: bcrypt.hashSync("1234",10), active:true, must_change_password:true },
+  { id:"U012", name:"İsmail Açıkgöz", role:"op", username:"ismail.acikgoz", password_hash: bcrypt.hashSync("1234",10), active:true, must_change_password:true },
+  { id:"U013", name:"Murat Akgün", role:"op", username:"murat.akgun", password_hash: bcrypt.hashSync("1234",10), active:true, must_change_password:true },
+  { id:"U014", name:"Gökhan Koçak", role:"op", username:"gokhan.kocak", password_hash: bcrypt.hashSync("1234",10), active:true, must_change_password:true },
+  { id:"U015", name:"Cüneyt Dincel", role:"op", username:"cuneyt.dincel", password_hash: bcrypt.hashSync("1234",10), active:true, must_change_password:true },
+  { id:"U016", name:"Gökhan Karadeniz", role:"op", username:"gokhan.karadeniz", password_hash: bcrypt.hashSync("1234",10), active:true, must_change_password:true },
+  { id:"U017", name:"Muhammed Akyol", role:"op", username:"muhammed.akyol", password_hash: bcrypt.hashSync("1234",10), active:true, must_change_password:true }
 ];
 
 const jwt         = require("jsonwebtoken");
 const path        = require("path");
 const fs          = require("fs");
 const compression = require("compression");
+const rateLimit    = require("express-rate-limit");
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || "cmms-v15-change-me-in-production";
+const MIN_PASSWORD_LEN = 6;
+
+// ── LOGIN RATE LIMIT ── 5 deneme / 15 dakika (IP başına)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Çok fazla başarısız giriş denemesi. 15 dakika sonra tekrar deneyin." },
+  skipSuccessfulRequests: true, // başarılı girişler sayaca dahil değil
+});
 
 const DATA_DIR  = process.env.DB_DIR || path.join(__dirname, "data");
 const DATA_FILE = path.join(DATA_DIR, "cmms_data.json");
@@ -171,7 +183,7 @@ function adminOnly(req, res, next) {
 }
 
 // ── AUTH ──
-app.post("/api/login", (req, res) => {
+app.post("/api/login", loginLimiter, (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) return res.status(400).json({ error: "Eksik bilgi" });
   const uname = String(username).trim();
@@ -184,7 +196,29 @@ app.post("/api/login", (req, res) => {
   const token = jwt.sign({ id:u.id, username:u.username, role:u.role, name:u.name, sid }, JWT_SECRET, { expiresIn:"30m" });
   if (prev) addAudit(u.id, u.name, u.role, "Oturum Devralındı", "auth", null, `${u.name} yeni cihazdan giriş yaptı — önceki oturum sonlandırıldı`);
   else addAudit(u.id, u.name, u.role, "Giriş", "auth", null, `${u.name} sisteme giriş yaptı`);
-  res.json({ token, user: { id:u.id, name:u.name, role:u.role, username:u.username }, takeover: !!prev });
+  res.json({
+    token,
+    user: { id:u.id, name:u.name, role:u.role, username:u.username },
+    takeover: !!prev,
+    must_change_password: !!u.must_change_password
+  });
+});
+
+// ── ŞİFRE DEĞİŞTİRME (kendi hesabı) ──
+app.post("/api/change-password", auth, (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) return res.status(400).json({ error: "Eksik bilgi" });
+  if (String(newPassword).length < MIN_PASSWORD_LEN)
+    return res.status(400).json({ error: `Yeni şifre en az ${MIN_PASSWORD_LEN} karakter olmalı` });
+  const u = (DB.users||[]).find(x => x.id === req.user.id && x.active);
+  if (!u) return res.status(404).json({ error: "Kullanıcı bulunamadı" });
+  if (!bcrypt.compareSync(currentPassword, u.password_hash))
+    return res.status(401).json({ error: "Mevcut şifre hatalı" });
+  u.password_hash = bcrypt.hashSync(newPassword, 10);
+  u.must_change_password = false;
+  addAudit(u.id, u.name, u.role, "Şifre Değiştirildi", "user", u.id, `${u.name} kendi şifresini değiştirdi`);
+  saveDB();
+  res.json({ ok: true });
 });
 
 app.post("/api/logout", auth, (req, res) => {
@@ -202,6 +236,36 @@ app.get("/api/state", auth, (req, res) => {
   res.json(state);
 });
 
+// ── ROL BAZLI YAZMA KORUMASI ──
+// admin/leader: tam yetki (kalıp/maliyet/yedek parça dahil).
+// tech/op: kalıp ana verisini (parça adı, göz sayısı, PM aralığı, konum vb.) DEĞİŞTİREMEZ,
+// sadece kendi iş akışının doğal sonucu olan PM sayaç alanlarını güncelleyebilir.
+// Yedek parça kataloğu (stok/fiyat) tech/op için tamamen salt-okunurdur.
+// Not: iş emirleri (wos) bu fonksiyonun kapsamı dışında — mevcut merge mantığıyla yönetilir,
+// çünkü havuzdan iş üstlenme/devretme gibi meşru çok kullanıcılı akışlar zaten var.
+const MOLD_FIELDS_TECH_CAN_EDIT = new Set(["pm_counter", "total_shots", "last_pm_date", "is_regular", "regular_days", "regular_updated"]);
+function sanitizeStateForRole(role, serverState, incoming) {
+  if (role === "admin" || role === "leader") return incoming;
+  const sanitized = { ...incoming };
+  const serverMolds = (serverState && serverState.molds) || [];
+  const clientMolds = incoming.molds;
+  if (Array.isArray(clientMolds)) {
+    const clientMap = new Map(clientMolds.map(m => [m.id, m]));
+    sanitized.molds = serverMolds.map(sm => {
+      const cm = clientMap.get(sm.id);
+      if (!cm) return sm; // istemci bu kalıbı göndermemiş — sunucu korur (silme/kayıp engellenir)
+      const merged = { ...sm };
+      for (const f of MOLD_FIELDS_TECH_CAN_EDIT) {
+        if (cm[f] !== undefined) merged[f] = cm[f];
+      }
+      return merged; // diğer tüm alanlar (parça adı, göz, PM aralığı, konum...) sunucu değerinde kalır
+    });
+    // İstemcinin yeni kalıp eklemeye çalışması (sunucuda olmayan id) sessizce yok sayılır.
+  }
+  if ("spareparts" in sanitized) sanitized.spareparts = (serverState && serverState.spareparts) || [];
+  return sanitized;
+}
+
 app.post("/api/state", (req, res, next) => {
   // sendBeacon token'ı query param olarak gönderir
   if (req.query.token && !req.headers.authorization) {
@@ -209,8 +273,9 @@ app.post("/api/state", (req, res, next) => {
   }
   auth(req, res, next);
 }, (req, res) => {
-  const { users, auditLog, deleted_wo_ids, ...rest } = req.body;
-  
+  const { users, auditLog, deleted_wo_ids, ...rawRest } = req.body;
+  const rest = sanitizeStateForRole(req.user.role, DB.state, rawRest);
+
   // ── WO MERGE: başkalarının eklediği/değiştirdiği işleri koru ──
   const serverWos = (DB.state && DB.state.wos) ? DB.state.wos : [];
   const clientWos = rest.wos || [];
@@ -266,6 +331,8 @@ app.get("/api/users", auth, adminOnly, (req, res) => {
 app.post("/api/users", auth, adminOnly, (req, res) => {
   let { id, name, role, username, password } = req.body;
   if (!id||!name||!role||!username||!password) return res.status(400).json({ error:"Tüm alanlar zorunlu" });
+  if (String(password).length < MIN_PASSWORD_LEN)
+    return res.status(400).json({ error:`Şifre en az ${MIN_PASSWORD_LEN} karakter olmalı` });
   username = String(username).trim();
   name = String(name).trim();
   if (!username) return res.status(400).json({ error:"Kullanıcı adı boş olamaz" });
@@ -278,7 +345,8 @@ app.post("/api/users", auth, adminOnly, (req, res) => {
   DB.users = (DB.users||[]).filter(u =>
     u.id !== id && u.username.toLowerCase() !== username.toLowerCase()
   );
-  DB.users.push({ id, name, role, username, password_hash: bcrypt.hashSync(password,10), active:true });
+  // Admin başkası için şifre belirlediğinde ilk girişte değiştirme zorunluluğu
+  DB.users.push({ id, name, role, username, password_hash: bcrypt.hashSync(password,10), active:true, must_change_password:true });
   addAudit(req.user.id, req.user.name, req.user.role, "Kullanıcı Eklendi", "user", id, `${name} (${role}) eklendi`);
   saveDB();
   res.json({ ok: true });
@@ -286,6 +354,8 @@ app.post("/api/users", auth, adminOnly, (req, res) => {
 
 app.put("/api/users/:id", auth, adminOnly, (req, res) => {
   let { name, role, username, password } = req.body;
+  if (password && String(password).length < MIN_PASSWORD_LEN)
+    return res.status(400).json({ error:`Şifre en az ${MIN_PASSWORD_LEN} karakter olmalı` });
   username = username ? String(username).trim() : username;
   name = name ? String(name).trim() : name;
   const u = (DB.users||[]).find(x=>x.id===req.params.id);
@@ -295,7 +365,7 @@ app.put("/api/users/:id", auth, adminOnly, (req, res) => {
     const clash = (DB.users||[]).find(x => x.username.toLowerCase() === username.toLowerCase() && x.active);
     if (clash) return res.status(400).json({ error:"Bu kullanıcı adı zaten kullanılıyor" });
     DB.users = (DB.users||[]).filter(x => x.username.toLowerCase() !== username.toLowerCase());
-    DB.users.push({ id: req.params.id, name, role, username, password_hash: bcrypt.hashSync(password,10), active:true });
+    DB.users.push({ id: req.params.id, name, role, username, password_hash: bcrypt.hashSync(password,10), active:true, must_change_password:true });
     addAudit(req.user.id, req.user.name, req.user.role, "Kullanıcı Oluşturuldu (kurtarma)", "user", req.params.id, `${name} sunucuya kaydedildi`);
     saveDB();
     return res.json({ ok: true, created: true });
@@ -304,7 +374,8 @@ app.put("/api/users/:id", auth, adminOnly, (req, res) => {
   if (role) u.role=role;
   if (username) u.username=username;
   u.active = true;
-  if (password) u.password_hash = bcrypt.hashSync(password,10);
+  // Admin başkasının şifresini sıfırladığında ilk girişte değiştirme zorunluluğu
+  if (password) { u.password_hash = bcrypt.hashSync(password,10); u.must_change_password = true; }
   addAudit(req.user.id, req.user.name, req.user.role, "Kullanıcı Düzenlendi", "user", req.params.id, `${u.name} güncellendi`);
   saveDB();
   res.json({ ok: true });
