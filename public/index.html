@@ -5738,6 +5738,9 @@ function TechPanel(_ref27) {
     modal = _useState80[0],
     setModal = _useState80[1];
   var _trf1 = useState(null), _trf2 = _slicedToArray(_trf1, 2), transferWO = _trf2[0], setTransferWO = _trf2[1];
+  var _tmq1 = useState(""), _tmq2 = _slicedToArray(_tmq1, 2), tmQuery = _tmq2[0], setTmQuery = _tmq2[1];
+  var _tms1 = useState("ALL"), _tms2 = _slicedToArray(_tms1, 2), tmStatus = _tms2[0], setTmStatus = _tms2[1];
+  var _tmo1 = useState({ key: "id", dir: 1 }), _tmo2 = _slicedToArray(_tmo1, 2), tmSort = _tmo2[0], setTmSort = _tmo2[1];
   var _useState81 = useState(false),
     _useState82 = _slicedToArray(_useState81, 2),
     showRCA = _useState82[0],
@@ -6057,26 +6060,83 @@ function TechPanel(_ref27) {
     }, btns));
   };
     if (page === "techmolds") {
-    var _q = (typeof window !== "undefined" && window.__tm_q) || "";
-    var _list = (data.molds || []);
+    var _n0 = function(v){ var x = parseFloat(v); return isNaN(x) ? 0 : x; };
+    var _openCountByMold = {};
+    (data.wos || []).forEach(function(w) { if (w.status !== "KAPATILDI") _openCountByMold[w.mold_id] = (_openCountByMold[w.mold_id]||0)+1; });
+    var _statuses = Array.from(new Set((data.molds||[]).map(function(m){return m.status;}).filter(Boolean)));
+
+    // Filtrele
+    var _list = (data.molds || []).filter(function(m) {
+      if (tmStatus !== "ALL" && m.status !== tmStatus) return false;
+      if (tmQuery.trim()) {
+        var q = tmQuery.trim().toLowerCase();
+        var hay = ((m.id||"") + " " + (m.part_name||"") + " " + (m.part_code||"")).toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+    // Sırala
+    var _dir = tmSort.dir;
+    _list = _list.slice().sort(function(a, b) {
+      var va, vb;
+      if (tmSort.key === "id") { va = a.id || ""; vb = b.id || ""; return va.localeCompare(vb, "tr", { numeric: true }) * _dir; }
+      if (tmSort.key === "part_name") { va = a.part_name || ""; vb = b.part_name || ""; return va.localeCompare(vb, "tr") * _dir; }
+      if (tmSort.key === "cavities") { va = _n0(a.cavities); vb = _n0(b.cavities); return (va - vb) * _dir; }
+      if (tmSort.key === "status") { va = a.status || ""; vb = b.status || ""; return va.localeCompare(vb, "tr") * _dir; }
+      if (tmSort.key === "pm") {
+        va = Math.min(100, _n0(a.pm_counter) / (_n0(a.pm_interval) || 50000) * 100);
+        vb = Math.min(100, _n0(b.pm_counter) / (_n0(b.pm_interval) || 50000) * 100);
+        return (va - vb) * _dir;
+      }
+      if (tmSort.key === "open") { va = _openCountByMold[a.id]||0; vb = _openCountByMold[b.id]||0; return (va - vb) * _dir; }
+      return 0;
+    });
+
+    var _toggleSort = function(key) {
+      setTmSort(function(prev) { return prev.key === key ? { key: key, dir: -prev.dir } : { key: key, dir: 1 }; });
+    };
+    var _cols = [["Kalıp Kodu","id"],["Parça Adı","part_name"],["Göz","cavities"],["Durum","status"],["PM Doluluk","pm"],["Açık İş","open"]];
+
     return React.createElement("div", { className: "anim" },
       React.createElement("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12, flexWrap:"wrap", gap:10 } },
-        React.createElement("h2", { style:{ fontSize:16, fontWeight:800, color:"#0f2044" } }, "📋 Kalıp Listesi (" + _list.length + ")"),
+        React.createElement("h2", { style:{ fontSize:16, fontWeight:800, color:"#0f2044" } }, "📋 Kalıp Listesi (" + _list.length + " / " + (data.molds||[]).length + ")"),
         React.createElement("span", { style:{ fontSize:11, background:"#eef2f7", color:"#6b7fa3", padding:"5px 12px", borderRadius:14, fontWeight:600 } }, "👁 Sadece görüntüleme")
+      ),
+      // Filtre çubuğu
+      React.createElement("div", { style:{ display:"flex", gap:10, marginBottom:12, flexWrap:"wrap", alignItems:"center" } },
+        React.createElement("input", {
+          type:"text", placeholder:"🔍 Kalıp kodu, parça adı veya kodu ara...",
+          value: tmQuery, onChange: function(e){ setTmQuery(e.target.value); },
+          style:{ flex:"1 1 260px", padding:"9px 12px", border:"1px solid #dde3ea", borderRadius:8, fontSize:12 }
+        }),
+        React.createElement("select", {
+          value: tmStatus, onChange: function(e){ setTmStatus(e.target.value); },
+          style:{ padding:"9px 12px", border:"1px solid #dde3ea", borderRadius:8, fontSize:12, background:"#fff" }
+        },
+          React.createElement("option", { value:"ALL" }, "Tüm Durumlar"),
+          _statuses.map(function(s){ return React.createElement("option", { key:s, value:s }, s); })
+        ),
+        (tmQuery || tmStatus !== "ALL") && React.createElement("button", {
+          onClick: function(){ setTmQuery(""); setTmStatus("ALL"); },
+          style:{ padding:"9px 14px", border:"1px solid #dde3ea", borderRadius:8, fontSize:12, background:"#fff", color:"#6b7fa3", cursor:"pointer" }
+        }, "✕ Temizle")
       ),
       React.createElement("div", { className:"card", style:{ padding:0, overflow:"auto", maxHeight:"75vh" } },
         React.createElement("table", { style:{ width:"100%", borderCollapse:"collapse", minWidth:640 } },
           React.createElement("thead", null, React.createElement("tr", null,
-            ["Kalıp Kodu","Parça Adı","Göz","Durum","PM Doluluk","Açık İş"].map(function(hd) {
-              return React.createElement("th", { key:hd, style:{ padding:"10px 8px", textAlign:"left", fontSize:10, fontWeight:800,
-                color:"#fff", background:"#0f2044", position:"sticky", top:0, whiteSpace:"nowrap" } }, hd);
+            _cols.map(function(c) {
+              var active = tmSort.key === c[1];
+              return React.createElement("th", {
+                key:c[1], onClick: function(){ _toggleSort(c[1]); }, title:"Sıralamak için tıklayın",
+                style:{ padding:"10px 8px", textAlign:"left", fontSize:10, fontWeight:800, cursor:"pointer", userSelect:"none",
+                  color:"#fff", background: active ? "#1565c0" : "#0f2044", position:"sticky", top:0, whiteSpace:"nowrap" }
+              }, c[0] + (active ? (_dir === 1 ? " ▲" : " ▼") : " ⇅"));
             })
           )),
           React.createElement("tbody", null, _list.map(function(m) {
-            var _n = function(v){ var x = parseFloat(v); return isNaN(x) ? 0 : x; };
-            var pct = Math.min(100, Math.round(_n(m.pm_counter) / (_n(m.pm_interval) || 50000) * 100));
+            var pct = Math.min(100, Math.round(_n0(m.pm_counter) / (_n0(m.pm_interval) || 50000) * 100));
             var pc = pct >= 90 ? "#c62828" : pct >= 70 ? "#e65100" : "#1a6b3c";
-            var openN = (data.wos || []).filter(function(w){ return w.mold_id === m.id && w.status !== "KAPATILDI"; }).length;
+            var openN = _openCountByMold[m.id] || 0;
             return React.createElement("tr", { key:m.id, style:{ borderBottom:"1px solid #eef2f7" } },
               React.createElement("td", { style:{ padding:"8px", fontSize:11, fontWeight:700, color:"#1565c0", whiteSpace:"nowrap", cursor:"pointer" },
                 onClick: function() { openMold(m.id); } }, m.id),
@@ -6092,7 +6152,8 @@ function TechPanel(_ref27) {
                   React.createElement("span", { style:{ fontSize:10, fontWeight:700, color:pc } }, pct + "%"))),
               React.createElement("td", { style:{ padding:"8px", fontSize:11, fontWeight:700, color: openN > 0 ? "#c62828" : "#9aa5b4" } }, openN || "—")
             );
-          }))
+          })),
+          _list.length === 0 && React.createElement("tr", null, React.createElement("td", { colSpan:6, style:{ padding:30, textAlign:"center", color:"#9aa5b4", fontSize:12 } }, "Filtreyle eşleşen kalıp yok"))
         )
       )
     );
@@ -15409,7 +15470,7 @@ function SysAdminPage(_ref) {
     React.createElement("div", {className:"card", style:{marginBottom:16, borderLeft:"4px solid #1a6b3c"}},
       React.createElement("div", {className:"section-title", style:{marginBottom:8, display:"flex", alignItems:"center", gap:8}},
         "📊 Üretim Verisi Yükle (Otomatik PM)",
-        React.createElement("span", {style:{fontSize:9, background:"#1a6b3c", color:"#fff", padding:"2px 8px", borderRadius:10, fontWeight:700}}, "v15.6")),
+        React.createElement("span", {style:{fontSize:9, background:"#1a6b3c", color:"#fff", padding:"2px 8px", borderRadius:10, fontWeight:700}}, "v15.7")),
       React.createElement("p", {style:{fontSize:12, color:"#6b7fa3", marginBottom:6}},
         "Ham üretim verinizi (Referans | Adet | Tarih) olduğu gibi yükleyin. Sistem negatifleri düşer, anormal değerleri atlar, her referansın kaç günde çalıştığını sayar."),
       React.createElement("p", {style:{fontSize:11, color:"#1a6b3c", marginBottom:14, fontWeight:600}},
@@ -15481,6 +15542,24 @@ function SysAdminPage(_ref) {
           }
         }, "🔄 Tümünü Sıfırla ve Yükle")
       )
+    ),
+
+    // ── GÜVENLİK ──
+    React.createElement("div", {className:"card", style:{marginBottom:16, borderLeft:"4px solid #c62828"}},
+      React.createElement("div", {className:"section-title", style:{marginBottom:8}}, "🔒 Güvenlik"),
+      React.createElement("p", {style:{fontSize:12, color:"#6b7fa3", marginBottom:14}},
+        "Bir güvenlik şüphesi durumunda (paylaşılmış şifre, terk edilen cihaz vb.) tüm kullanıcıları bir sonraki girişte şifre değiştirmeye zorlayabilirsiniz. Kendi hesabınız bundan etkilenmez."),
+      React.createElement("button", {
+        className:"btn", style:{background:"#c62828", color:"#fff", fontWeight:700, padding:"10px 18px"},
+        onClick: function() {
+          if(!window.confirm("Sizin dışınızdaki TÜM aktif kullanıcılar bir sonraki girişte şifre değiştirmeye zorlanacak. Devam edilsin mi?")) return;
+          fetch("/api/users/force-password-reset", { method:"POST", headers: apiHeaders() })
+            .then(function(r){return r.json();}).then(function(res){
+              if(res.ok){ alert("✅ " + res.count + " kullanıcı bir sonraki girişte şifre değiştirmeye zorlanacak."); }
+              else { alert("❌ Hata: "+(res.error||"Bilinmeyen")); }
+            }).catch(function(){ alert("❌ Sunucuya ulaşılamadı"); });
+        }
+      }, "🔒 Tüm Kullanıcılara Şifre Değiştirme Zorunluluğu Getir")
     ),
 
     // ── DEPOLAMA DURUMU ──
@@ -16738,12 +16817,14 @@ function AdvancedReports(_ref) {
   // Rapor tipleri
   var reports = [
     { id: "overview", ico: "📊", label: "Genel Bakış" },
+    { id: "trend", ico: "📅", label: "Zaman Trendi" },
     { id: "failcauses", ico: "🔧", label: "Arıza Sebepleri" },
     { id: "mttr", ico: "⏱", label: "MTTR (Tamir Süresi)" },
     { id: "mtbf", ico: "🔄", label: "MTBF (Arızasızlık)" },
     { id: "person", ico: "👤", label: "Kişi Bazlı Performans" },
     { id: "recurring", ico: "🔁", label: "Tekrar Eden Arızalar" },
-    { id: "shift", ico: "🕐", label: "Vardiya Analizi" }
+    { id: "shift", ico: "🕐", label: "Vardiya Analizi" },
+    { id: "cost", ico: "💰", label: "Maliyet Analizi" }
   ];
 
   return React.createElement("div", { className: "anim" },
@@ -16789,7 +16870,7 @@ function ReportContent(_ref) {
         React.createElement(RptKPI, { ico: "🚨", val: critCnt, label: "Açık Kritik", color: critCnt > 0 ? "#c62828" : "#1a6b3c" }),
         React.createElement(RptKPI, { ico: "🏭", val: molds.length, label: "Toplam Kalıp", color: "#7b1fa2" })
       ),
-      React.createElement("div", { className: "card" },
+      React.createElement("div", { className: "card", style: { marginBottom: 16 } },
         React.createElement("h3", { style: { fontSize: 14, fontWeight: 800, marginBottom: 14, color: "#0f2044" } }, "İş Emri Durum Dağılımı"),
         React.createElement(DonutChart, { data: [
           { label: "Beklemede", value: wos.filter(function(w) { return w.status === "BEKLEMEDE"; }).length },
@@ -16797,6 +16878,16 @@ function ReportContent(_ref) {
           { label: "Beklemeye Alınan", value: wos.filter(function(w) { return w.status === "BEKLEMEYE_ALINDI"; }).length },
           { label: "Kapatılan", value: closed.length }
         ].filter(function(d) { return d.value > 0; }) })
+      ),
+      React.createElement("div", { className: "card" },
+        React.createElement("h3", { style: { fontSize: 14, fontWeight: 800, marginBottom: 6, color: "#0f2044" } }, "⚠️ Öncelik Dağılımı"),
+        React.createElement("p", { style: { fontSize: 11, color: "#6b7fa3", marginBottom: 14 } }, "Tüm iş emirleri önceliğe göre — kritik/yüksek oranı yüksekse kaynak planlaması gözden geçirilmeli"),
+        React.createElement(BarChartH, {
+          color: "#e65100", unit: " iş",
+          data: ["KRİTİK", "YÜKSEK", "NORMAL"].map(function(p) {
+            return { label: p, value: wos.filter(function(w) { return w.priority === p; }).length };
+          }).filter(function(d) { return d.value > 0; })
+        })
       )
     );
   }
@@ -16835,16 +16926,44 @@ function ReportContent(_ref) {
     }).sort(function(a, b) { return b.value - a.value; }).slice(0, 10);
     var globalMttr = closed.filter(function(w) { return w.started_at && w.closed_at; });
     var avgAll = globalMttr.length > 0 ? globalMttr.reduce(function(s, w) { return s + _rptMin(w.started_at, w.closed_at); }, 0) / globalMttr.length : 0;
+    // Öncelik bazlı kırılım
+    var prioMttr = ["KRİTİK", "YÜKSEK", "NORMAL"].map(function(p) {
+      var subset = globalMttr.filter(function(w) { return w.priority === p; });
+      var avg = subset.length > 0 ? subset.reduce(function(s, w) { return s + _rptMin(w.started_at, w.closed_at); }, 0) / subset.length : 0;
+      return { label: p + " (" + subset.length + " iş)", value: Math.round(avg) };
+    }).filter(function(d) { return d.value > 0; });
+    // Kategori (fail_code) bazlı kırılım
+    var catNamesMttr = { CAPAK: "Çapak", ITICI: "İtici", SICAKLIK: "Sıcaklık", SU: "Su Kaçağı", YUZEY: "Yüzey", OLCU: "Ölçü", KONTROL: "Kontrol", DIGER: "Diğer" };
+    var catMttr = {};
+    globalMttr.forEach(function(w) {
+      var c = w.fail_code || w.fail_cat || "DIGER";
+      if (!catMttr[c]) catMttr[c] = { total: 0, count: 0 };
+      catMttr[c].total += _rptMin(w.started_at, w.closed_at);
+      catMttr[c].count++;
+    });
+    var catMttrData = Object.keys(catMttr).map(function(c) {
+      return { label: (catNamesMttr[c] || c) + " (" + catMttr[c].count + ")", value: Math.round(catMttr[c].total / catMttr[c].count) };
+    }).sort(function(a, b) { return b.value - a.value; });
     return React.createElement("div", null,
       React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 16 } },
         React.createElement(RptKPI, { ico: "⏱", val: _fmtDur(avgAll), label: "Genel Ort. MTTR", color: "#1565c0" }),
         React.createElement(RptKPI, { ico: "📊", val: globalMttr.length, label: "Ölçülen Tamir", color: "#1a6b3c" }),
         React.createElement(RptKPI, { ico: "⚠️", val: mttrData.length > 0 ? _fmtDur(mttrData[0].value) : "—", label: "En Uzun (kalıp)", sub: mttrData.length > 0 ? mttrData[0].label : "", color: "#c62828" })
       ),
-      React.createElement("div", { className: "card" },
+      React.createElement("div", { className: "card", style: { marginBottom: 16 } },
         React.createElement("h3", { style: { fontSize: 14, fontWeight: 800, marginBottom: 6, color: "#0f2044" } }, "⏱ Kalıp Bazlı Ortalama Tamir Süresi (MTTR)"),
         React.createElement("p", { style: { fontSize: 11, color: "#6b7fa3", marginBottom: 14 } }, "En uzun tamir süren 10 kalıp — dakika cinsinden"),
         React.createElement(BarChartH, { data: mttrData.map(function(d) { return { label: d.label, value: d.value }; }), color: "#c62828", unit: " dk" })
+      ),
+      prioMttr.length > 0 && React.createElement("div", { className: "card", style: { marginBottom: 16 } },
+        React.createElement("h3", { style: { fontSize: 14, fontWeight: 800, marginBottom: 6, color: "#0f2044" } }, "⚠️ Öncelik Bazlı Ortalama Tamir Süresi"),
+        React.createElement("p", { style: { fontSize: 11, color: "#6b7fa3", marginBottom: 14 } }, "Kritik işler gerçekten daha hızlı mı çözülüyor? Beklenen: Kritik < Yüksek < Normal"),
+        React.createElement(BarChartH, { data: prioMttr, color: "#7b1fa2", unit: " dk" })
+      ),
+      catMttrData.length > 0 && React.createElement("div", { className: "card" },
+        React.createElement("h3", { style: { fontSize: 14, fontWeight: 800, marginBottom: 6, color: "#0f2044" } }, "🔧 Arıza Sebebine Göre Ortalama Tamir Süresi"),
+        React.createElement("p", { style: { fontSize: 11, color: "#6b7fa3", marginBottom: 14 } }, "Hangi tip arıza en çok zaman alıyor — parça temini gecikmeleri burada görülebilir"),
+        React.createElement(BarChartH, { data: catMttrData, color: "#00838f", unit: " dk" })
       )
     );
   }
@@ -16875,37 +16994,46 @@ function ReportContent(_ref) {
   if (type === "person") {
     var personStats = {};
     closed.filter(function(w) { return w.assigned && w.started_at && w.closed_at; }).forEach(function(w) {
-      if (!personStats[w.assigned]) personStats[w.assigned] = { count: 0, total: 0 };
+      if (!personStats[w.assigned]) personStats[w.assigned] = { count: 0, total: 0, respTotal: 0, respCount: 0 };
       personStats[w.assigned].count++;
       personStats[w.assigned].total += _rptMin(w.started_at, w.closed_at);
+      if (w.assigned_at) { personStats[w.assigned].respTotal += _rptMin(w.assigned_at, w.started_at); personStats[w.assigned].respCount++; }
     });
     var personData = Object.keys(personStats).map(function(uid) {
       var u = users.find(function(x) { return x.id === uid; });
       var st = personStats[uid];
-      return { label: u ? u.name : uid, count: st.count, avg: Math.round(st.total / st.count) };
+      return { label: u ? u.name : uid, count: st.count, avg: Math.round(st.total / st.count),
+        resp: st.respCount > 0 ? Math.round(st.respTotal / st.respCount) : null };
     }).sort(function(a, b) { return b.count - a.count; });
+    var hasResp = personData.some(function(d) { return d.resp !== null; });
     return React.createElement("div", null,
       React.createElement("div", { className: "card", style: { marginBottom: 16 } },
         React.createElement("h3", { style: { fontSize: 14, fontWeight: 800, marginBottom: 14, color: "#0f2044" } }, "👤 Tamamlanan İş Sayısı (Kişi Bazlı)"),
         React.createElement(BarChartH, { data: personData.map(function(d) { return { label: d.label, value: d.count }; }), color: "#1a6b3c", unit: " iş" })
       ),
-      React.createElement("div", { className: "card" },
+      React.createElement("div", { className: "card", style: { marginBottom: 16 } },
         React.createElement("h3", { style: { fontSize: 14, fontWeight: 800, marginBottom: 14, color: "#0f2044" } }, "⏱ Ortalama Müdahale Süresi (Kişi Bazlı)"),
         React.createElement(BarChartH, { data: personData.map(function(d) { return { label: d.label, value: d.avg }; }), color: "#e65100", unit: " dk" }),
         React.createElement("div", { style: { marginTop: 16, borderTop: "1px solid #f0f3f7", paddingTop: 12 } },
           React.createElement("table", { style: { width: "100%", fontSize: 12, borderCollapse: "collapse" } },
             React.createElement("thead", null, React.createElement("tr", { style: { borderBottom: "2px solid #e8edf2" } },
-              ["Teknisyen", "Tamamlanan", "Ort. Süre"].map(function(h) { return React.createElement("th", { key: h, style: { padding: "8px", textAlign: "left", color: "#6b7fa3" } }, h); })
+              ["Teknisyen", "Tamamlanan", "Ort. Süre", "Ort. Tepki Süresi"].map(function(h) { return React.createElement("th", { key: h, style: { padding: "8px", textAlign: "left", color: "#6b7fa3" } }, h); })
             )),
             React.createElement("tbody", null, personData.map(function(d, i) {
               return React.createElement("tr", { key: i, style: { borderBottom: "1px solid #f0f3f7" } },
                 React.createElement("td", { style: { padding: "8px", fontWeight: 600 } }, d.label),
                 React.createElement("td", { style: { padding: "8px" } }, d.count),
-                React.createElement("td", { style: { padding: "8px", color: "#e65100", fontWeight: 600 } }, _fmtDur(d.avg))
+                React.createElement("td", { style: { padding: "8px", color: "#e65100", fontWeight: 600 } }, _fmtDur(d.avg)),
+                React.createElement("td", { style: { padding: "8px", color: "#7b1fa2", fontWeight: 600 } }, d.resp !== null ? _fmtDur(d.resp) : "—")
               );
             }))
           )
         )
+      ),
+      hasResp && React.createElement("div", { className: "card" },
+        React.createElement("h3", { style: { fontSize: 14, fontWeight: 800, marginBottom: 6, color: "#0f2044" } }, "🚀 Ortalama Tepki Süresi (Atama → İşe Başlama)"),
+        React.createElement("p", { style: { fontSize: 11, color: "#6b7fa3", marginBottom: 14 } }, "İş kendisine atandıktan ne kadar sonra başlıyor — düşük olması iyidir"),
+        React.createElement(BarChartH, { data: personData.filter(function(d) { return d.resp !== null; }).map(function(d) { return { label: d.label, value: d.resp }; }), color: "#7b1fa2", unit: " dk" })
       )
     );
   }
@@ -16986,6 +17114,80 @@ function ReportContent(_ref) {
         React.createElement("h3", { style: { fontSize: 14, fontWeight: 800, marginBottom: 6, color: "#0f2044" } }, "⏱ Vardiya Bazlı Ortalama Tamir Süresi"),
         React.createElement(BarChartH, { data: mttrData, color: "#e65100", unit: " dk" })
       )
+    );
+  }
+
+  // ZAMAN TRENDİ
+  if (type === "trend") {
+    var dayMap = {};
+    ariz.forEach(function(w) {
+      var d = (w.created_at || "").slice(0, 10);
+      if (d) dayMap[d] = (dayMap[d] || 0) + 1;
+    });
+    var allDays = Object.keys(dayMap).sort();
+    var last30 = allDays.slice(-30);
+    var trendData = last30.map(function(d) {
+      var p = d.split("-");
+      return { label: p.length === 3 ? p[2] + "/" + p[1] : d, value: dayMap[d] };
+    });
+    var totalInRange = last30.reduce(function(s, d) { return s + dayMap[d]; }, 0);
+    var avgPerDay = last30.length > 0 ? totalInRange / last30.length : 0;
+    var half = Math.floor(last30.length / 2);
+    var firstHalfAvg = half > 0 ? last30.slice(0, half).reduce(function(s, d) { return s + dayMap[d]; }, 0) / half : 0;
+    var secondHalfAvg = (last30.length - half) > 0 ? last30.slice(half).reduce(function(s, d) { return s + dayMap[d]; }, 0) / (last30.length - half) : 0;
+    var trendUp = secondHalfAvg > firstHalfAvg * 1.1;
+    var trendDown = secondHalfAvg < firstHalfAvg * 0.9;
+    var trendLabel = trendUp ? "Artışta" : trendDown ? "Azalışta" : "Stabil";
+    var trendIco = trendUp ? "📈" : trendDown ? "📉" : "➡️";
+    var trendColor = trendUp ? "#c62828" : trendDown ? "#1a6b3c" : "#1565c0";
+    return React.createElement("div", null,
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 16 } },
+        React.createElement(RptKPI, { ico: "📅", val: last30.length, label: "Görüntülenen Gün", color: "#1565c0" }),
+        React.createElement(RptKPI, { ico: "🔧", val: totalInRange, label: "Toplam Arıza", color: "#e65100" }),
+        React.createElement(RptKPI, { ico: "📊", val: avgPerDay.toFixed(1), label: "Günlük Ortalama", color: "#7b1fa2" }),
+        React.createElement(RptKPI, { ico: trendIco, val: trendLabel, label: "Eğilim (ilk yarı → son yarı)", color: trendColor })
+      ),
+      React.createElement("div", { className: "card" },
+        React.createElement("h3", { style: { fontSize: 14, fontWeight: 800, marginBottom: 6, color: "#0f2044" } }, "📅 Günlük Arıza Sayısı Trendi"),
+        React.createElement("p", { style: { fontSize: 11, color: "#6b7fa3", marginBottom: 14 } }, "Son " + last30.length + " gün, kronolojik sırayla (en üstte en eski)"),
+        trendData.length > 0
+          ? React.createElement(BarChartH, { data: trendData, color: "#1565c0", unit: " arıza" })
+          : React.createElement("div", { style: { padding: 30, textAlign: "center", color: "#9aa5b4" } }, "Henüz trend gösterecek yeterli veri yok")
+      )
+    );
+  }
+
+  // MALİYET ANALİZİ
+  if (type === "cost") {
+    var costByMold = {};
+    var totalCost = 0, costedCount = 0;
+    wos.forEach(function(w) {
+      var c = (w.cost_labor || 0) + (w.cost_parts || 0);
+      if (c > 0) {
+        costedCount++;
+        totalCost += c;
+        costByMold[w.mold_id] = (costByMold[w.mold_id] || 0) + c;
+      }
+    });
+    var costData = Object.keys(costByMold).map(function(k) {
+      return { label: k, value: Math.round(costByMold[k]) };
+    }).sort(function(a, b) { return b.value - a.value; }).slice(0, 10);
+    var avgCost = costedCount > 0 ? totalCost / costedCount : 0;
+    return React.createElement("div", null,
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 16 } },
+        React.createElement(RptKPI, { ico: "💰", val: "₺" + totalCost.toLocaleString(), label: "Toplam Maliyet", color: "#7b1fa2" }),
+        React.createElement(RptKPI, { ico: "📋", val: costedCount, label: "Maliyet Girilen İş", color: "#1565c0" }),
+        React.createElement(RptKPI, { ico: "📊", val: "₺" + Math.round(avgCost).toLocaleString(), label: "Ort. İş Başı Maliyet", color: "#e65100" }),
+        React.createElement(RptKPI, { ico: "🏭", val: costData.length > 0 ? "₺" + costData[0].value.toLocaleString() : "—", label: "En Maliyetli Kalıp", sub: costData.length > 0 ? costData[0].label : "", color: "#c62828" })
+      ),
+      costData.length > 0
+        ? React.createElement("div", { className: "card" },
+            React.createElement("h3", { style: { fontSize: 14, fontWeight: 800, marginBottom: 6, color: "#0f2044" } }, "💰 En Maliyetli 10 Kalıp"),
+            React.createElement("p", { style: { fontSize: 11, color: "#6b7fa3", marginBottom: 14 } }, "İşçilik + yedek parça maliyeti toplamı — hangi kalıba en çok para gidiyor"),
+            React.createElement(BarChartH, { data: costData, color: "#7b1fa2", unit: " ₺" })
+          )
+        : React.createElement("div", { className: "card", style: { textAlign: "center", padding: 40, color: "#9aa5b4" } },
+            "Henüz maliyet verisi girilmemiş. İş emri tamamlanırken işçilik/parça maliyeti girildiğinde burada görünecek.")
     );
   }
 

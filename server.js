@@ -140,6 +140,7 @@ function addAudit(userId, userName, role, action, entityType, entityId, detail) 
 async function initServer() {
   await loadDB();
   ensureDemoUsers();
+  migrateExistingUsersPasswordFlag();
   startListen();
 }
 
@@ -151,6 +152,25 @@ if (!DB.users || DB.users.length === 0) {
   saveDB();
   console.log("✅ Demo kullanıcılar oluşturuldu  →  admin / admin123");
 }
+}
+
+// ── GÖÇ: v15.6 öncesi oluşturulan kullanıcılarda must_change_password alanı yok ──
+// Bu alan hiç tanımlı değilse (eski kayıt), güvenlik gereği ZORUNLU işaretlenir.
+// Kullanıcı bir kez şifresini değiştirdiğinde alan false olur ve bir daha tetiklenmez —
+// bu fonksiyon sadece alanı hiç GÖRMEMİŞ kayıtlara dokunur, idempotent'tir.
+function migrateExistingUsersPasswordFlag() {
+  if (!DB.users || DB.users.length === 0) return;
+  var migrated = 0;
+  DB.users.forEach(function(u) {
+    if (!("must_change_password" in u)) {
+      u.must_change_password = true;
+      migrated++;
+    }
+  });
+  if (migrated > 0) {
+    saveDB();
+    console.log(`🔒 Güvenlik göçü: ${migrated} mevcut kullanıcı ilk girişte şifre değiştirmeye zorlanacak`);
+  }
 }
 
 
@@ -457,6 +477,21 @@ app.get("/api/tv", (req, res) => {
 });
 
 // POST /api/users/reset-seed — Sabit kullanıcı listesini yeniden yükle (admin)
+// POST /api/users/force-password-reset — Tüm aktif kullanıcılara ilk girişte şifre değiştirme zorunluluğu (admin)
+app.post("/api/users/force-password-reset", auth, adminOnly, (req, res) => {
+  var count = 0;
+  (DB.users || []).forEach(function(u) {
+    if (u.active && u.id !== req.user.id) { // kendi hesabını zorunlu kılmaz — o zaten değiştirebilir
+      u.must_change_password = true;
+      count++;
+    }
+  });
+  addAudit(req.user.id, req.user.name, req.user.role, "Toplu Şifre Sıfırlama Zorunluluğu", "user", "all",
+    `${count} kullanıcı bir sonraki girişte şifre değiştirmeye zorlandı`);
+  saveDB();
+  res.json({ ok: true, count: count });
+});
+
 app.post("/api/users/reset-seed", auth, (req, res) => {
   if (req.user.role !== "admin") return res.status(403).json({ error: "Yetkisiz" });
   const mode = req.body.mode || "merge"; // "merge" = eksikleri ekle, "replace" = tümünü değiştir
