@@ -1,0 +1,12 @@
+{
+  "appId": "com.kalipbakim.cmms",
+  "appName": "CMMS Kalıp Bakım",
+  "webDir": "public",
+  "server": {
+    "url": "https://cmms-kalip-bakim.onrender.com",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}

@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>CMMS v15 — TV Dashboard</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f1e38;color:#fff;overflow-x:hidden}
+.top{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;flex-wrap:wrap;gap:8px}
+.grid{display:grid;gap:12px;padding:0 20px;margin-bottom:16px}
+.kpi-grid{grid-template-columns:repeat(4,1fr)}
+.main-grid{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:1000px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.main-grid{grid-template-columns:1fr}}
+.card{background:#152642;border-radius:14px;padding:18px;max-height:calc(100vh - 260px);overflow-y:auto}
+.kpi{background:#1a2d4d;border-radius:16px;padding:20px 14px;text-align:center;border:1px solid #2a4a7a}
+.kpi .ico{font-size:38px}.kpi .val{font-size:36px;font-weight:900;line-height:1;margin:4px 0}.kpi .lbl{font-size:10px;color:#7fa8d4;font-weight:600}
+.wo-row{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.1);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.wo-row:nth-child(even){background:rgba(255,255,255,.02)}
+.btn-claim{background:linear-gradient(135deg,#ff6d00,#e65100);color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:15px;font-weight:800;cursor:pointer;white-space:nowrap;transition:transform .15s;margin-top:6px}
+.btn-claim:hover{transform:scale(1.05)}
+.badge{display:inline-block;padding:4px 10px;border-radius:6px;font-size:13px;font-weight:800}
+.p-KRİTİK,.p-CRITICAL{color:#ff5252;background:rgba(255,82,82,.15)}.p-YÜKSEK,.p-HIGH{color:#ff9800;background:rgba(255,152,0,.15)}
+.p-NORMAL{color:#64b5f6;background:rgba(100,181,246,.15)}.p-DÜŞÜK,.p-LOW{color:#78909c;background:rgba(120,144,156,.15)}
+.progress-row{background:#1e3556;border-radius:10px;padding:14px 16px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;border-left:5px solid #1565c0}
+/* Claim Modal */
+.overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(10,22,40,.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:9999}
+.claim-card{background:linear-gradient(145deg,#111e33,#0d1a2e);border:1px solid #1a3a6b;border-radius:20px;padding:32px 28px;width:100%;max-width:340px;box-shadow:0 24px 80px rgba(0,0,0,.6)}
+.claim-card h2{font-size:18px;font-weight:800;margin:0 0 4px;color:#fff}
+.claim-card .sub{font-size:11px;color:#4a6a8a;margin-bottom:20px}
+.claim-card label{display:block;font-size:10px;font-weight:700;color:#7fa8d4;margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px}
+.claim-card input{width:100%;padding:11px 14px;background:#0a1628;border:1.5px solid #1a3a6b;border-radius:10px;color:#fff;font-size:13px;outline:none;margin-bottom:14px;transition:border .2s}
+.claim-card input:focus{border-color:#1565c0}
+.claim-card input::placeholder{color:#2a4a6b}
+.claim-card .err{background:rgba(198,40,40,.2);border:1px solid #c62828;color:#ff8a80;padding:8px 12px;border-radius:8px;font-size:11px;margin-bottom:14px;font-weight:600}
+.claim-card .wo-info{background:rgba(255,255,255,.05);border-radius:10px;padding:10px 14px;margin-bottom:20px;border:1px solid rgba(255,255,255,.08)}
+.claim-card .wo-info .id{font-weight:800;font-size:14px;color:#64b5f6}.claim-card .wo-info .det{font-size:10px;color:#4a6a8a;margin-top:2px}
+.claim-btns{display:flex;gap:8px}
+.claim-btns button{flex:1;padding:12px;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s}
+.claim-btns .cancel{background:rgba(255,255,255,.08);color:#7fa8d4}.claim-btns .cancel:hover{background:rgba(255,255,255,.15)}
+.claim-btns .submit{background:linear-gradient(135deg,#e65100,#bf360c);color:#fff}.claim-btns .submit:hover{background:#e65100}
+.claim-btns .submit:disabled{opacity:.5;cursor:not-allowed}
+.notif{position:fixed;top:16px;right:16px;padding:14px 22px;border-radius:12px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 8px 32px rgba(0,0,0,.5);animation:slideIn .3s ease;cursor:pointer;max-width:400px;backdrop-filter:blur(8px)}
+.n-danger{background:rgba(198,40,40,.95);border:1px solid #ff5252}.n-success{background:rgba(26,107,60,.95);border:1px solid #4caf50}
+@keyframes slideIn{from{transform:translateX(120px);opacity:0}to{transform:translateX(0);opacity:1}}
+.empty{color:#7fa8d4;text-align:center;padding:40px;font-size:18px;font-weight:600}
+</style>
+</head>
+<body>
+<div id="tv"></div>
+<script>
+var REFRESH=12000, prevTotal=0, notifTimer=null;
+// Türkçe karakter desteği — UTF-8
+function t(k){
+  var T={title:"CMMS v15 — Canlı Dashboard",open:"Açık İş Emri",crit:"Kritik İş",mttr:"MTTR",closed:"Bugün Kapatılan",
+    pool:"İş Havuzu",poolSub:"Üstlenmeye Açık",progress:"Devam Eden İşler",allOpen:"Tüm Açık İşler",
+    claim:"Üstlen",login:"Giriş Yap",loginSys:"Sisteme Gir",fullscreen:"Tam Ekran",small:"Küçült",
+    user:"Kullanıcı Adı",pass:"Şifre",cancel:"İptal",claimTitle:"İş Emri Üstlen",claimBtn:"Giriş Yap ve Üstlen",
+    loading:"Giriş yapılıyor...",noPool:"Havuzda iş yok 👍",noProgress:"Aktif çalışma yok",
+    assigned:"Atandı",waiting:"Havuzda",start:"Başlama",newWo:"yeni iş emri!",claimed:"işi üstlenildi!",
+    errCred:"Kullanıcı adı ve şifre girin",errConn:"Sunucuya bağlanılamadı",update:"sn güncelleme",by:"tarafından"};
+  return T[k]||k;
+}
+
+function showNotif(text,type){
+  var old=document.querySelector('.notif');if(old)old.remove();
+  var n=document.createElement('div');n.className='notif n-'+(type||'danger');n.textContent=text;n.onclick=function(){n.remove();};
+  document.body.appendChild(n);clearTimeout(notifTimer);notifTimer=setTimeout(function(){if(n.parentNode)n.remove();},10000);
+  try{var a=new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleVQlAMKc5dqeTkUbr6XU2pddQiKYr8/XnV5JKZOzytWcYE0slbbG0ZpiTy6Xt8LNmWJRMJa4v8qXYlMylri+x5ZiVDOWuL3GlWJUNJa4vcWUYlU0lri8xZNhVTWXuLzEkmFVNQ==");a.volume=0.3;a.play();}catch(e){}
+  if("Notification" in window&&Notification.permission==="granted")new Notification("CMMS",{body:text,icon:"/icon.svg"});
+}
+
+function fetchData(){
+  fetch("/api/tv").then(function(r){return r.json();}).then(function(d){
+    if(!d)return;
+    if(prevTotal>0&&d.totalWos>prevTotal)showNotif("🚨 "+(d.totalWos-prevTotal)+" "+t("newWo"),"danger");
+    prevTotal=d.totalWos;render(d);
+  }).catch(function(){});
+}
+
+function render(d){
+  var now=new Date();
+  var h='';
+  // Top
+  h+='<div class="top"><div><h1 style="font-size:30px;font-weight:900">🏭 '+t("title")+'</h1>';
+  h+='<div style="font-size:15px;color:#a8c5e8;margin-top:4px;font-weight:600">'+now.toLocaleDateString("tr-TR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})+" — "+now.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})+" · 12"+t("update")+"</div></div>";
+  h+='<div style="display:flex;gap:8px;align-items:center">';
+  h+='<a href="/" style="background:#1a6b3c;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:12px;font-weight:700;cursor:pointer;text-decoration:none;box-shadow:0 2px 8px rgba(26,107,60,.4);transition:all .2s">🔐 Giriş Yap</a>';
+  h+='<button onclick="toggleFS()" style="background:#1565c0;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:11px;font-weight:700;cursor:pointer">⛶ '+t("fullscreen")+'</button>';
+  h+='</div></div>';
+  // KPI
+  h+='<div class="grid kpi-grid">';
+  h+=kpi("📋",d.open,t("open"),d.open>10?"#e65100":"#64b5f6");
+  h+=kpi("🔴",d.critical,t("crit"),d.critical>0?"#ff5252":"#4caf50");
+  h+=kpi("⏱",d.mttr>0?d.mttr+" dk":"—",t("mttr"),d.mttr>120?"#ff5252":"#4caf50");
+  h+=kpi("✅",d.closedToday,t("closed"),"#4caf50");
+  h+='</div>';
+  // 3 sütun
+  h+='<div class="grid main-grid">';
+  // Pool
+  h+='<div class="card" style="border:1.5px solid #e65100"><h3 style="font-size:19px;font-weight:800;color:#ffb74d;margin-bottom:14px">🔧 '+t("pool")+' — '+t("poolSub")+' ('+((d.poolWos||[]).length)+')</h3>';
+  h+='<div style="display:flex;gap:12px">';
+  var _poolAriz=(d.poolWos||[]).filter(function(w){return w.type!=="PM";});
+  var _poolPm=(d.poolWos||[]).filter(function(w){return w.type==="PM";});
+  var _poolCard=function(w){
+    var c='<div style="background:#1e3556;border-radius:10px;padding:13px 15px;margin-bottom:8px;border:1px solid #2a4a7a;display:flex;justify-content:space-between;align-items:center">';
+    c+='<div><div style="font-weight:800;color:#fff;font-size:17px">'+w.id+'</div><div style="color:#a8c5e8;font-size:14px;margin-top:3px;font-weight:600">'+w.mold_id+' · '+w.type+'</div><div style="color:#ffb74d;font-size:13px;margin-top:2px;font-weight:600">🕐 '+(w.created_at||'').slice(5,16)+'</div>';
+    c+='<div style="color:#7fa8d4;font-size:13px;margin-top:2px">'+w.description+'</div></div>';
+    c+='<div style="text-align:right"><span class="badge p-'+w.priority+'">'+w.priority+'</span><br>';
+    c+='<button class="btn-claim" onclick="openClaim(\''+w.id+"','"+w.mold_id+"','"+w.type+"','"+(w.description||"").replace(/'/g,"")+"')\">🤚 "+t("claim")+'</button></div></div>';
+    return c;
+  };
+  h+='<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:#ff8a80;margin-bottom:8px">🔴 Arızalar ('+_poolAriz.length+')</div>';
+  if(!_poolAriz.length)h+='<div class="empty" style="padding:16px">'+t("noPool")+'</div>';
+  _poolAriz.forEach(function(w){h+=_poolCard(w);});
+  h+='</div>';
+  h+='<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:#4dd0e1;margin-bottom:8px">🔧 Planlı Bakım ('+_poolPm.length+')</div>';
+  if(!_poolPm.length)h+='<div class="empty" style="padding:16px">'+t("noPool")+'</div>';
+  _poolPm.forEach(function(w){h+=_poolCard(w);});
+  h+='</div>';
+  h+='</div>';
+  h+='</div>';
+  // Progress
+  h+='<div class="card" style="border:1.5px solid #1565c0"><h3 style="font-size:19px;font-weight:800;color:#90caf9;margin-bottom:14px">🔄 '+t("progress")+' ('+((d.inProgressWos||[]).length)+')</h3>';
+  if(!(d.inProgressWos||[]).length)h+='<div class="empty">'+t("noProgress")+'</div>';
+  (d.inProgressWos||[]).forEach(function(w){
+    h+='<div class="progress-row"><div><div style="font-weight:800;color:#fff;font-size:17px">'+w.id+' <span style="color:#90caf9;font-size:14px">→ '+(w.assigned||"?")+'</span></div>';
+    h+='<div style="color:#4a6a8a;font-size:9px;margin-top:2px">'+w.mold_id+' · '+w.type+'</div>';
+    h+='<div style="color:#7fa8d4;font-size:13px;margin-top:2px">'+w.description+'</div></div>';
+    h+='<div style="text-align:right;font-size:8px;color:#2a4a6b">';
+    if(w.started_at)h+='<div>'+t("start")+': '+(w.started_at||"").slice(11,16)+'</div>';
+    h+='<span class="badge p-'+w.priority+'">'+w.priority+'</span></div></div>';
+  });
+  h+='</div>';
+  // All open
+  h+='<div class="card"><h3 style="font-size:19px;font-weight:800;color:#fff;margin-bottom:14px">📋 '+t("allOpen")+' ('+d.open+')</h3>';
+  (d.openWos||[]).forEach(function(w){
+    h+='<div class="wo-row"><div style="flex:1;min-width:0"><div style="display:flex;gap:5px;align-items:center">';
+    h+='<span style="font-weight:700;color:#fff;font-size:10px">'+w.id+'</span><span class="badge p-'+w.priority+'">'+w.priority+'</span></div>';
+    h+='<div style="color:#a8c5e8;font-size:13px;margin-top:2px;font-weight:600">'+w.mold_id+' · '+(w.description||"")+' <span style="color:#ffb74d">· '+(w.created_at||'').slice(5,16)+'</span></div></div>';
+    h+='<div style="font-size:13px;text-align:right;font-weight:600">'+(w.assigned?'<span style="color:#90caf9">👤 '+w.assigned+'</span>':'<span style="color:#ffb74d">⏳ '+t("waiting")+'</span>')+'</div></div>';
+  });
+  h+='</div></div>';
+  // Corner buttons
+
+  document.getElementById("tv").innerHTML=h;
+}
+
+function kpi(ico,val,label,color){
+  return '<div class="kpi"><div class="ico">'+ico+'</div><div class="val" style="color:'+(color||"#64b5f6")+'">'+val+'</div><div class="lbl">'+label+'</div></div>';
+}
+function toggleFS(){if(!document.fullscreenElement)document.documentElement.requestFullscreen().catch(function(){});else document.exitFullscreen();}
+
+var claimWo=null;
+function openClaim(id,mold,type,desc){
+  claimWo={id:id,mold:mold,type:type,desc:desc};
+  var m=document.createElement('div');m.className='overlay';m.id='claim-modal';
+  m.onclick=function(e){if(e.target===m)m.remove();};
+  m.innerHTML='<div class="claim-card">'
+    +'<h2>🤚 '+t("claimTitle")+'</h2>'
+    +'<div class="sub">'+t("claimTitle")+'</div>'
+    +'<div class="wo-info"><div class="id">'+id+'</div><div class="det">'+mold+' · '+type+'</div><div class="det">'+desc+'</div></div>'
+    +'<label>'+t("user")+'</label><input id="c-user" placeholder="'+t("user")+'" autofocus>'
+    +'<label>'+t("pass")+'</label><input id="c-pass" type="password" placeholder="'+t("pass")+'">'
+    +'<div id="c-err"></div>'
+    +'<div class="claim-btns">'
+    +'<button class="cancel" onclick="document.getElementById(\'claim-modal\').remove()">'+t("cancel")+'</button>'
+    +'<button class="submit" onclick="doClaim()" id="c-btn">'+t("claimBtn")+'</button>'
+    +'</div></div>';
+  document.body.appendChild(m);
+  document.getElementById('c-pass').onkeydown=function(e){if(e.key==="Enter")doClaim();};
+}
+
+function doClaim(){
+  var u=document.getElementById('c-user').value.trim(),p=document.getElementById('c-pass').value;
+  var err=document.getElementById('c-err'),btn=document.getElementById('c-btn');
+  if(!u||!p){err.className='err';err.textContent=t("errCred");return;}
+  btn.disabled=true;btn.textContent='⏳ '+t("loading");
+  fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:u,password:p})})
+  .then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});})
+  .then(function(lr){
+    if(!lr.ok){btn.disabled=false;btn.textContent=t("claimBtn");err.className='err';err.textContent=lr.j.error||'Error';return;}
+    return fetch("/api/tv/claim",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+lr.j.token},body:JSON.stringify({wo_id:claimWo.id})})
+    .then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};});})
+    .then(function(cr){
+      if(!cr.ok){btn.disabled=false;btn.textContent=t("claimBtn");err.className='err';err.textContent=cr.j.error||'Error';return;}
+      document.getElementById('claim-modal').remove();
+      showNotif("✅ "+claimWo.id+" "+lr.j.user.name+" "+t("by")+" "+t("claimed"),"success");
+      fetchData();
+    });
+  }).catch(function(){btn.disabled=false;btn.textContent=t("claimBtn");err.className='err';err.textContent=t("errConn");});
+}
+
+if("Notification" in window&&Notification.permission==="default")Notification.requestPermission();
+fetchData();setInterval(fetchData,REFRESH);
+</script>
+</body>
+</html>
