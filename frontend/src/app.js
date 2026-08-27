@@ -8844,6 +8844,14 @@ function AdminDashboardV14(_ref43) {
       return m.status === "Kullanılabilir";
     }).length + " üretimde"
   }, {
+    ico: "🔔",
+    l: "Bakım Bildirimi Olan Kalıp",
+    v: new Set(wos.filter(function (w) {
+      return w.status === "BEKLEMEDE" && w.mold_id;
+    }).map(function (w) { return w.mold_id; })).size,
+    c: "#e65100",
+    sub: "henüz başlanmadı"
+  }, {
     ico: "📋",
     l: "Açık İş",
     v: openWos.length,

@@ -114,6 +114,40 @@ function addAudit(userId, userName, role, action, entityType, entityId, detail) 
   });
 }
 
+// ── KALIP DURUMU OTOMATİK EŞLEME (Depoda ⇄ Bakımda) ──
+// Bir kalıba ait bir iş emri AKTİF hale geldiğinde (DEVAM_EDİYOR — arıza veya
+// modifikasyon fark etmez), kalıp "Depoda" durumundaysa otomatik "Bakımda"ya
+// alınır. İş kapandığında, o kalıba ait başka aktif iş kalmadıysa VE durum bu
+// mekanizma tarafından otomatik değiştirilmişse "Depoda"ya geri döner.
+// Sadece "Depoda" durumundaki kalıplar için çalışır — kullanıcının elle
+// "Transfer"/"Hurda" gibi bilinçli olarak verdiği bir durumun üzerine yazmaz
+// ("tereddütlü/süreci başlamamış" kalıplar için, bkz. kullanıcı talebi).
+async function syncMoldStatusForWO(wo, prevStatus) {
+  if (!wo.mold_id) return;
+  const molds = await store.getMolds();
+  const mold = molds.find(m => m.id === wo.mold_id);
+  if (!mold) return;
+
+  const startedNow = wo.status === "DEVAM_EDİYOR" && prevStatus !== "DEVAM_EDİYOR";
+  const closedNow = wo.status === "KAPATILDI" && prevStatus !== "KAPATILDI";
+
+  if (startedNow && mold.status === "Depoda") {
+    mold.status = "Bakımda";
+    mold._auto_bakimda = true;
+    await store.upsertMold(mold);
+    broadcast({ type: "molds_replaced", molds });
+  } else if (closedNow && mold._auto_bakimda) {
+    const allWos = await store.getWorkOrders();
+    const stillWorking = allWos.some(w => w.mold_id === wo.mold_id && w.id !== wo.id && w.status === "DEVAM_EDİYOR");
+    if (!stillWorking) {
+      mold.status = "Depoda";
+      delete mold._auto_bakimda;
+      await store.upsertMold(mold);
+      broadcast({ type: "molds_replaced", molds });
+    }
+  }
+}
+
 // ── GERÇEK ZAMANLI SENKRONİZASYON (WebSocket) ──
 // REST uçları (GET/POST /api/state) ilk yükleme ve yedek yol olarak AYNEN kalıyor —
 // WS sadece üzerine ek: bir mutasyon başarılı olduğunda bağlı istemcilere anlık olay
@@ -175,6 +209,7 @@ async function initData() {
   }
   await ensureDemoUsers();
   await migrateExistingUsersPasswordFlag();
+  await migrateDefaultMoldStatus();
 }
 async function initServer() {
   await initData();
@@ -210,6 +245,33 @@ async function migrateExistingUsersPasswordFlag() {
   }
 }
 
+
+// ── GÖÇ: Varsayılan kalıp durumunu "Kullanılabilir"dan "Depoda"ya çevir ──
+// Geçmişte neredeyse tüm kalıplar "Kullanılabilir" (=üretimde) olarak işaretlenmişti;
+// bu, "883 kalıbın 882'si üretimde" gibi gerçekçi olmayan bir görünüme yol açıyordu.
+// Gerçekte kalıpların büyük çoğunluğu depoda bekler — sadece üzerinde aktif iş olan
+// kalıplar "Bakımda" olur (bkz. syncMoldStatusForWO). Elle "Transfer"/"Hurda" olarak
+// işaretlenmiş kalıplara dokunulmaz. TEK SEFERLİK ve idempotent'tir (state_extra'daki
+// bayrakla işaretlenir). Henüz hiç veri kaydedilmemiş taze kurulumlarda ÇALIŞMAZ —
+// aksi halde hasState() erken tetiklenir ve ilk-kurulum akışı bozulur.
+async function migrateDefaultMoldStatus() {
+  if (!(await store.hasState())) return;
+  const extra = await store.getStateExtra();
+  if (extra && extra._mold_status_migrated_v1) return;
+  const molds = await store.getMolds();
+  let migrated = 0;
+  for (const m of molds) {
+    if (!m.status || m.status === "Kullanılabilir") {
+      m.status = "Depoda";
+      await store.upsertMold(m);
+      migrated++;
+    }
+  }
+  await store.saveStateExtra({ ...(extra || {}), _mold_status_migrated_v1: true });
+  if (migrated > 0) {
+    console.log(`📦 Varsayılan kalıp durumu göçü: ${migrated} kalıp "Depoda" olarak işaretlendi`);
+  }
+}
 
 // ── MIDDLEWARE ──
 // app.use(compression()); // Büyük HTML ile sorun yaratabiliyor
@@ -348,15 +410,24 @@ app.post("/api/state", (req, res, next) => {
   const deletedIds = new Set(deleted_wo_ids || []);
   for (const cw of (incomingWos || [])) {
     if (deletedIds.has(cw.id)) continue; // istemci bilinçli silmiş, aşağıda silinecek
+    const prevWo = await store.getWorkOrderById(cw.id);
     const applied = await store.upsertWorkOrder(cw);
-    if (applied) broadcast({ type: "wo_updated", wo: cw });
+    if (applied) {
+      broadcast({ type: "wo_updated", wo: cw });
+      await syncMoldStatusForWO(cw, prevWo ? prevWo.status : null);
+    }
   }
   for (const id of deletedIds) {
     await store.deleteWorkOrder(id);
     broadcast({ type: "wo_deleted", id });
   }
 
-  await store.saveStateExtra(sanitizeExtraForRole(req.user.role, extra));
+  // _mold_status_migrated_v1 sunucunun kendi göç bayrağıdır — istemcinin tam-obje
+  // üzerine yazma davranışıyla (extra) her kaydda silinmemesi için burada korunur.
+  const mergedExtra = sanitizeExtraForRole(req.user.role, extra);
+  const existingExtra = await store.getStateExtra();
+  if (existingExtra && existingExtra._mold_status_migrated_v1) mergedExtra._mold_status_migrated_v1 = true;
+  await store.saveStateExtra(mergedExtra);
 
   const allWos = await store.getWorkOrders();
   res.json({ ok: true, woCount: allWos.length });
@@ -572,6 +643,7 @@ app.post("/api/workorders", auth, validate(workOrderSchema), async (req, res) =>
 
   await store.upsertWorkOrder(wo);
   broadcast({ type: "wo_updated", wo });
+  await syncMoldStatusForWO(wo, null);
 
   // Audit log
   await addAudit(req.user.id, req.user.name, req.user.role, "Arıza Bildirimi", "wo", wo.id,
@@ -588,6 +660,7 @@ app.post("/api/tv/claim", auth, validate(tvClaimSchema), async (req, res) => {
   if (!wo) return res.status(404).json({ error: "İş emri bulunamadı" });
   if (!["leader","tech"].includes(req.user.role)) return res.status(403).json({ error: "Sadece lider ve teknisyenler iş üstlenebilir" });
   if (wo.assigned && wo.status !== "BEKLEMEDE") return res.status(400).json({ error: "Bu iş zaten atanmış" });
+  const prevStatus = wo.status;
   wo.assigned = req.user.id;
   wo.status = "DEVAM_EDİYOR";
   wo.assigned_at = wo.assigned_at || nowStrTR();
@@ -595,6 +668,7 @@ app.post("/api/tv/claim", auth, validate(tvClaimSchema), async (req, res) => {
   wo.updated_at = new Date().toISOString();
   await store.upsertWorkOrder(wo);
   broadcast({ type: "wo_updated", wo });
+  await syncMoldStatusForWO(wo, prevStatus);
   await addAudit(req.user.id, req.user.name, req.user.role, "İş Üstlenildi (TV)", "wo", wo_id,
     req.user.name + " " + wo_id + " iş emrini TV modundan üstlendi");
   res.json({ ok: true, wo_id, assigned: req.user.name });
