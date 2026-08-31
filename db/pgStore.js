@@ -88,6 +88,24 @@ function createPgStore(pool) {
       await pool.query(`CREATE TABLE IF NOT EXISTS state_extra (
         id INT PRIMARY KEY DEFAULT 1, data JSONB NOT NULL DEFAULT '{}'::jsonb
       )`);
+      // Doküman ekleri (teknik çizim, üretici manueli, onarım fotoğrafı vb.).
+      // Kalıp/iş emri satırlarından AYRI tutulur ki GET /api/state (her girişte
+      // tüm kalıp/iş emri listesini döndürür) dosya içeriğiyle şişmesin —
+      // ekler sadece ilgili kayıt açıldığında ayrıca, istek üzerine çekilir.
+      await pool.query(`CREATE TABLE IF NOT EXISTS attachments (
+        id TEXT PRIMARY KEY, entity_type TEXT NOT NULL, entity_id TEXT NOT NULL,
+        filename TEXT NOT NULL, mime_type TEXT, size_bytes INT,
+        data_base64 TEXT NOT NULL,
+        uploaded_by TEXT, uploaded_by_name TEXT, uploaded_at TEXT
+      )`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS attachments_entity_idx ON attachments (entity_type, entity_id)`);
+      // Kalite onayı ayarları — state_extra'dan AYRI tutulur ki istemcinin genel
+      // POST /api/state gövde-üzeri-yazma davranışı (extra blob'u tamamen
+      // değiştirir) bu ayarları sessizce sıfırlamasın; sadece adminOnly
+      // /api/system/quality-settings route'ları üzerinden değişir.
+      await pool.query(`CREATE TABLE IF NOT EXISTS quality_settings (
+        id INT PRIMARY KEY DEFAULT 1, data JSONB NOT NULL DEFAULT '{}'::jsonb
+      )`);
 
       await require("./migrateLegacyBlob").migrateIfNeeded(pool, store);
     },
@@ -240,6 +258,42 @@ function createPgStore(pool) {
         [JSON.stringify(data)]
       );
     },
+
+    // Kalite onayı ayarları
+    async getQualitySettings() {
+      const r = await pool.query("SELECT data FROM quality_settings WHERE id = 1");
+      return r.rows[0] ? r.rows[0].data : { enabled: false, trigger_fail_codes: [] };
+    },
+    async saveQualitySettings(data) {
+      await pool.query(
+        `INSERT INTO quality_settings (id, data) VALUES (1, $1) ON CONFLICT (id) DO UPDATE SET data = $1`,
+        [JSON.stringify(data)]
+      );
+    },
+
+    // Doküman ekleri — liste sorgusu data_base64'ü DÖNMEZ (sadece meta bilgi,
+    // liste hafif kalsın); tam içerik sadece indirme anında ayrı sorgulanır.
+    async saveAttachment(att) {
+      await pool.query(
+        `INSERT INTO attachments (id,entity_type,entity_id,filename,mime_type,size_bytes,data_base64,uploaded_by,uploaded_by_name,uploaded_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [att.id, att.entity_type, att.entity_id, att.filename, att.mime_type ?? null, att.size_bytes ?? null,
+         att.data_base64, att.uploaded_by ?? null, att.uploaded_by_name ?? null, att.uploaded_at ?? null]
+      );
+    },
+    async getAttachmentsMeta(entityType, entityId) {
+      const r = await pool.query(
+        `SELECT id, entity_type, entity_id, filename, mime_type, size_bytes, uploaded_by, uploaded_by_name, uploaded_at
+         FROM attachments WHERE entity_type = $1 AND entity_id = $2 ORDER BY uploaded_at DESC`,
+        [entityType, entityId]
+      );
+      return r.rows;
+    },
+    async getAttachmentById(id) {
+      const r = await pool.query("SELECT * FROM attachments WHERE id = $1", [id]);
+      return r.rows[0] || null;
+    },
+    async deleteAttachment(id) { await pool.query("DELETE FROM attachments WHERE id = $1", [id]); },
 
     async getStorageInfo() {
       const r = await pool.query(`SELECT

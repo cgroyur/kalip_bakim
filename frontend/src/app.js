@@ -175,11 +175,22 @@ var kpiMTTR = function kpiMTTR(id, wos) {
     return s + calcMin(w.started_at, w.closed_at);
   }, 0) / l.length) : 0;
 };
+// MTBF (dakika): arızalar arasındaki GERÇEK ortalama süre. Önceki sürüm sabit
+// 30 gün varsayıyordu — 10 günlük verisi olan bir kalıp ile 200 günlük verisi
+// olan bir kalıp aynı paydayla bölünüyordu. Artık ilk ve son arıza zaman
+// damgası arasındaki GERÇEK aralık, arıza sayısı-1'e bölünüyor (n arıza,
+// n-1 aralık) — standart "gözlemlenen MTBF" formülü.
 var kpiMTBF = function kpiMTBF(id, wos) {
   var l = wos.filter(function (w) {
-    return w.mold_id === id && w.type !== "PM" && w.status === "KAPATILDI";
+    return w.mold_id === id && w.type !== "PM" && w.status === "KAPATILDI" && w.created_at;
+  }).sort(function (a, b) {
+    return new Date(a.created_at) - new Date(b.created_at);
   });
-  return l.length >= 2 ? Math.round(30 * 24 * 60 / l.length) : 0;
+  if (l.length < 2) return 0;
+  var firstTs = new Date(l[0].created_at).getTime();
+  var lastTs = new Date(l[l.length - 1].created_at).getTime();
+  var spanMin = (lastTs - firstTs) / 60000;
+  return spanMin > 0 ? Math.round(spanMin / (l.length - 1)) : 0;
 };
 var kpiDowntime = function kpiDowntime(id, wos) {
   return wos.filter(function (w) {
@@ -198,12 +209,16 @@ var SCOLOR = {
   BEKLEMEDE: "tag-blue",
   DEVAM_EDİYOR: "tag-orange",
   BEKLEMEYE_ALINDI: "tag-purple",
+  TAMAMLANDI: "tag-teal",
+  KALITE_BEKLIYOR: "tag-pink",
   KAPATILDI: "tag-green"
 };
 var SLABEL = {
   BEKLEMEDE: "Beklemede",
   DEVAM_EDİYOR: "Devam Ediyor",
   BEKLEMEYE_ALINDI: "Beklemeye Alındı",
+  TAMAMLANDI: "Doğrulama Bekliyor",
+  KALITE_BEKLIYOR: "Kalite Onayı Bekliyor",
   KAPATILDI: "Kapatıldı"
 };
 var PRANK = {
@@ -612,16 +627,27 @@ function App() {
   useEffect(function() {
     var TRANSFER_LOCATIONS = ["hakan plastik","narplas"];
     var changed = false;
+    var changedIds = [];
     var newMolds = (data.molds||[]).map(function(m) {
       var loc = (m.location||"").toLowerCase().trim();
       if (TRANSFER_LOCATIONS.some(function(t){ return loc.indexOf(t) >= 0; }) && m.status !== "Transfer" && m.status !== "Hurda") {
         changed = true;
+        changedIds.push(m.id);
         return Object.assign({}, m, { status: "Transfer", transfer_to: m.location });
       }
       return m;
     });
     if (changed && setData) {
       setData(function(prev) { return Object.assign({}, prev, { molds: newMolds }); });
+      // Otomatik durum değişikliği izlenebilir olsun — sessizce olmasın
+      changedIds.forEach(function(id) {
+        if (CMMS_TOKEN) {
+          apiPost("/api/audit", {
+            action: "Kalıp Durumu Otomatik Değişti", entity_type: "mold", entity_id: id,
+            detail: "Konum \"" + newMolds.find(function(m){return m.id===id;}).location + "\" tedarikçi listesiyle eşleşti — Transfer (otomatik)"
+          }).catch(function(){});
+        }
+      });
     }
   }, []);
 
@@ -664,6 +690,40 @@ function App() {
     _notifIdsRef.current = currentIds;
     _notifRef.current = currentWos.length;
   }, [data]);
+
+  // Kalite onayı bildirimi — bir iş emri KALITE_BEKLIYOR durumuna yeni
+  // girdiğinde, kalite rolündeki kullanıcıya aynı pop-up/ses/push deseniyle
+  // haber verir. Yukarıdaki bildirim sadece YENİ iş emirlerini yakalar (id
+  // bazlı); bu ise mevcut bir işin DURUM değişimini izler.
+  var _qStatusRef = useRef({});
+  useEffect(function () {
+    var currentWos = data.wos || [];
+    var prevStatuses = _qStatusRef.current;
+    if (user && user.role === "kalite" && Object.keys(prevStatuses).length > 0) {
+      var newlyPending = currentWos.filter(function (w) {
+        return w.status === "KALITE_BEKLIYOR" && prevStatuses[w.id] !== "KALITE_BEKLIYOR";
+      });
+      if (newlyPending.length > 0) {
+        var n = document.createElement("div");
+        n.style.cssText = "position:fixed;top:16px;right:16px;background:#ab47bc;color:#fff;padding:16px 24px;border-radius:12px;font-size:14px;font-weight:700;z-index:99999;box-shadow:0 8px 32px rgba(0,0,0,.4);animation:slideIn .3s ease;cursor:pointer;max-width:400px";
+        var firstWo = newlyPending[0];
+        n.innerHTML = "🧪 Kalite Onayı Bekliyor" + "<br><span style=\"font-size:12px;font-weight:400;opacity:.9\">" + escHtml(firstWo.id) + " — " + escHtml(firstWo.mold_id||"") + (newlyPending.length>1?" (+"+(newlyPending.length-1)+" iş daha)":"") + "</span>";
+        n.onclick = function(){ n.remove(); setPage("qapprove"); };
+        document.body.appendChild(n);
+        setTimeout(function(){ if(n.parentNode) n.remove(); }, 10000);
+        try{var a=new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2teleVQlAMKc5dqeTkUbr6XU2pddQiKYr8/XnV5JKZOzytWcYE0slbbG0ZpiTy6Xt8LNmWJRMJa4v8qXYlMylri+x5ZiVDOWuL3GlWJUNJa4vcWUYlU0lri8xZNhVTWXuLzEkmFVNQ==");a.volume=0.3;a.play();}catch(e){}
+        if("Notification" in window && Notification.permission==="granted"){
+          new Notification("CMMS — Kalite Onayı Bekliyor", {
+            body: firstWo.id + " · " + (firstWo.mold_id||"") + " · " + (firstWo.description||"").slice(0,50),
+            icon:"/icon.svg", tag:"cmms-quality"
+          });
+        }
+      }
+    }
+    var nextStatuses = {};
+    currentWos.forEach(function (w) { nextStatuses[w.id] = w.status; });
+    _qStatusRef.current = nextStatuses;
+  }, [data, user]);
 
   // Bildirim izni iste (login sonrası, bir kez)
   useEffect(function() {
@@ -1028,7 +1088,7 @@ function App() {
     }
   }, new Date().toLocaleString("tr-TR")))), /*#__PURE__*/React.createElement("div", {
     className: "main"
-  }, user.role === "admin" && /*#__PURE__*/React.createElement(AdminPanel, ctx), user.role === "leader" && /*#__PURE__*/React.createElement(LeaderPanel, ctx), user.role === "op" && /*#__PURE__*/React.createElement(OperatorPanel, ctx), user.role === "tech" && /*#__PURE__*/React.createElement(TechPanel, ctx))), moldModal && /*#__PURE__*/React.createElement(MoldHistoryModal, {
+  }, user.role === "admin" && /*#__PURE__*/React.createElement(AdminPanel, ctx), user.role === "leader" && /*#__PURE__*/React.createElement(LeaderPanel, ctx), user.role === "op" && /*#__PURE__*/React.createElement(OperatorPanel, ctx), user.role === "tech" && /*#__PURE__*/React.createElement(TechPanel, ctx), user.role === "kalite" && /*#__PURE__*/React.createElement(KalitePanel, ctx))), moldModal && /*#__PURE__*/React.createElement(MoldHistoryModal, {
     moldId: moldModal,
     data: data,
     updMold: (user && (user.role === "admin" || user.role === "leader")) ? updMold : null,
@@ -1082,6 +1142,10 @@ var PT = {
     my: "İşlerim",
     waiting: "Beklemeye Alınan",
     done: "Tamamlananlar"
+  },
+  kalite: {
+    qapprove: "Kalite Onayı Bekleyenler",
+    qhistory: "Onay Geçmişim"
   }
 };
 function pageTitle(r, p) {
@@ -1325,6 +1389,11 @@ function Sidebar(_ref2) {
       l: "Arıza Havuzu",
       b: pendingCnt || null
     }, {
+      id: "verify",
+      ico: "🔎",
+      l: "Doğrulama Bekleyen",
+      b: wos.filter(function (w) { return w.status === "TAMAMLANDI"; }).length || null
+    }, {
       id: "matrix",
       ico: "👥",
       l: "Teknisyen Matrisi"
@@ -1394,19 +1463,31 @@ function Sidebar(_ref2) {
       id: "tvmode",
       ico: "📺",
       l: "TV Modu"
+    }],
+    kalite: [{
+      id: "qapprove",
+      ico: "🧪",
+      l: "Kalite Onayı Bekleyenler",
+      b: wos.filter(function (w) { return w.status === "KALITE_BEKLIYOR"; }).length || null
+    }, {
+      id: "qhistory",
+      ico: "📋",
+      l: "Onay Geçmişim"
     }]
   };
   var RC = {
     admin: "#ff9800",
     leader: "#42a5f5",
     op: "#66bb6a",
-    tech: "#ef5350"
+    tech: "#ef5350",
+    kalite: "#ab47bc"
   };
   var RL = {
     admin: "Admin",
     leader: "Lider",
     op: "Operatör",
-    tech: "Teknisyen"
+    tech: "Teknisyen",
+    kalite: "Kalite"
   };
   return /*#__PURE__*/React.createElement("div", {
     className: "sidebar"
@@ -1512,10 +1593,109 @@ function SidebarPasswordChangeTrigger(_ref9) {
     })
   );
 }
+// Doküman ekleri — teknik çizim, üretici manueli, onarım fotoğrafı vb.
+// Kalıba/iş emrine bağlanır; /api/attachments üzerinden ayrı depolanır (bkz.
+// server.js) — GET /api/state'e dahil değildir, sadece bu panel açıldığında
+// istek üzerine çekilir.
+var ATTACHMENT_MAX_BYTES = 8 * 1024 * 1024; // 8MB — sunucudaki base64 limitinin altında güvenli pay
+function fmtFileSize(bytes) {
+  if (!bytes) return "—";
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
+  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+}
+function AttachmentsPanel(_ref2b) {
+  var entityType = _ref2b.entityType, entityId = _ref2b.entityId, canDelete = _ref2b.canDelete;
+  var _al1 = useState([]), _al2 = _slicedToArray(_al1, 2), list = _al2[0], setList = _al2[1];
+  var _al3 = useState(true), _al4 = _slicedToArray(_al3, 2), loading = _al4[0], setLoading = _al4[1];
+  var _al5 = useState(false), _al6 = _slicedToArray(_al5, 2), uploading = _al6[0], setUploading = _al6[1];
+  var _al7 = useState(""), _al8 = _slicedToArray(_al7, 2), err = _al8[0], setErr = _al8[1];
+
+  var load = function() {
+    if (!entityId) return;
+    setLoading(true);
+    apiGet("/api/attachments?entity_type=" + encodeURIComponent(entityType) + "&entity_id=" + encodeURIComponent(entityId))
+      .then(function(rows) { setList(rows || []); setLoading(false); })
+      .catch(function() { setLoading(false); });
+  };
+  useEffect(function() { load(); }, [entityType, entityId]);
+
+  var onFilePicked = function(e) {
+    var file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > ATTACHMENT_MAX_BYTES) {
+      setErr("Dosya çok büyük (maks. 8MB): " + file.name);
+      return;
+    }
+    setErr("");
+    setUploading(true);
+    var reader = new FileReader();
+    reader.onload = function() {
+      var dataUrl = String(reader.result || "");
+      var base64 = dataUrl.split(",")[1] || "";
+      fetch("/api/attachments", {
+        method: "POST", headers: apiHeaders(),
+        body: JSON.stringify({ entity_type: entityType, entity_id: entityId, filename: file.name, mime_type: file.type, data_base64: base64 })
+      }).then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+        .then(function(res) {
+          setUploading(false);
+          if (!res.ok) { setErr(res.j.error || "Yükleme başarısız"); return; }
+          load();
+        }).catch(function() { setUploading(false); setErr("Sunucuya ulaşılamadı"); });
+    };
+    reader.onerror = function() { setUploading(false); setErr("Dosya okunamadı"); };
+    reader.readAsDataURL(file);
+  };
+
+  var download = function(att) {
+    apiGet("/api/attachments/" + att.id + "/content").then(function(full) {
+      if (!full) return;
+      var a = document.createElement("a");
+      a.href = "data:" + (full.mime_type || "application/octet-stream") + ";base64," + full.data_base64;
+      a.download = full.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    });
+  };
+
+  var doDelete = function(att) {
+    if (!window.confirm('"' + att.filename + '" dosyasını silmek istediğinizden emin misiniz?')) return;
+    fetch("/api/attachments/" + att.id, { method: "DELETE", headers: apiHeaders() })
+      .then(function() { load(); });
+  };
+
+  return React.createElement("div", null,
+    React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 } },
+      React.createElement("div", { className: "section-title", style: { marginBottom: 0 } }, "📎 Dosyalar" + (list.length ? " (" + list.length + ")" : "")),
+      React.createElement("label", { className: "btn btn-sm btn-primary", style: { cursor: uploading ? "not-allowed" : "pointer", opacity: uploading ? .6 : 1 } },
+        uploading ? "⏳ Yükleniyor..." : "+ Dosya Ekle",
+        React.createElement("input", { type: "file", style: { display: "none" }, disabled: uploading, onChange: onFilePicked })
+      )
+    ),
+    err && React.createElement("div", { className: "alert-box alert-danger", style: { marginBottom: 10, fontSize: 11 } }, err),
+    loading && React.createElement("div", { style: { fontSize: 11, color: "#9aa5b4" } }, "Yükleniyor..."),
+    !loading && list.length === 0 && React.createElement("div", { style: { fontSize: 11, color: "#9aa5b4" } }, "Henüz dosya eklenmemiş — teknik çizim, üretici manueli veya onarım fotoğrafı ekleyebilirsiniz."),
+    !loading && list.length > 0 && React.createElement("div", null, list.map(function(att) {
+      return React.createElement("div", {
+        key: att.id, className: "kk-row", style: { cursor: "pointer" }
+      },
+        React.createElement("span", { className: "kk-lbl", onClick: function() { download(att); }, style: { cursor: "pointer" } },
+          "📄 " + att.filename + " · " + fmtFileSize(att.size_bytes) + " · " + (att.uploaded_by_name || "") + " · " + String(att.uploaded_at || "").slice(0, 16)),
+        React.createElement("span", { style: { display: "flex", gap: 6 } },
+          React.createElement("button", { className: "btn btn-xs btn-ghost", onClick: function() { download(att); } }, "⬇"),
+          canDelete && React.createElement("button", { className: "btn btn-xs", style: { background: "#fff0f0", color: "#c62828" }, onClick: function() { doDelete(att); } }, "🗑")
+        )
+      );
+    }))
+  );
+}
 function MoldHistoryModal(_ref3) {
   var moldId = _ref3.moldId,
     data = _ref3.data,
     updMold = _ref3.updMold,
+    readOnly = _ref3.readOnly,
     onClose = _ref3.onClose;
   var _useState15 = useState("card"),
     _useState16 = _slicedToArray(_useState15, 2),
@@ -1552,6 +1732,10 @@ function MoldHistoryModal(_ref3) {
   var tCostP = wos.reduce(function (s, w) {
     return s + (w.cost_parts || 0);
   }, 0);
+  var estProdLoss = (totalDown / 60) * (m.hourly_prod_value || 0);
+  var ravRatio = m.purchase_value ? Math.round((tCostL + tCostP) / m.purchase_value * 100) : null;
+  var isRenewalCandidate = ravRatio !== null && ravRatio >= 50;
+  var isCriticalMold = wos.some(function (w) { return w.priority === "KRİTİK"; });
   var pmPct = Math.min(100, Math.round((m.pm_counter || 0) / (m.pm_interval || 50000) * 100));
   var pmC = pmPct >= 90 ? "#c62828" : pmPct >= 70 ? "#e65100" : "#1a6b3c";
   var SPC = {
@@ -1707,7 +1891,7 @@ function MoldHistoryModal(_ref3) {
         return setTab(t.id);
       }
     }, t.l);
-  })), tab === "card" && /*#__PURE__*/React.createElement("div", {
+  })), tab === "card" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     style: {
       display: "grid",
       gridTemplateColumns: "1fr 1fr",
@@ -1845,7 +2029,7 @@ function MoldHistoryModal(_ref3) {
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "section-title"
-  }, "\uD83D\uDCCA Performans"), [["Toplam Arıza", failWos.length + " adet"], ["Toplam PM", pmWos.length + " adet"], ["Ort. Müdahale Süresi", fmtMin(mttr)], ["Ort. Arızasız Çalışma", fmtMin(mtbf)], ["Toplam Duruş", fmtMin(totalDown)], ["Toplam Maliyet", "₺" + (tCostL + tCostP).toLocaleString("tr-TR")]].map(function (_ref8) {
+  }, "\uD83D\uDCCA Performans"), [["Toplam Arıza", failWos.length + " adet"], ["Kalite Kaynaklı Arıza", failWos.filter(function(w){ return w.impact === "Kalite Sorunu"; }).length + " adet"], ["Toplam PM", pmWos.length + " adet"], ["Ort. Müdahale Süresi", fmtMin(mttr)], ["Ort. Arızasız Çalışma", fmtMin(mtbf)], ["Toplam Duruş", fmtMin(totalDown)], ["Toplam Maliyet", "₺" + (tCostL + tCostP).toLocaleString("tr-TR")]].map(function (_ref8) {
     var _ref9 = _slicedToArray(_ref8, 2),
       l = _ref9[0],
       v = _ref9[1];
@@ -1857,7 +2041,24 @@ function MoldHistoryModal(_ref3) {
     }, l), /*#__PURE__*/React.createElement("span", {
       className: "kk-val"
     }, v));
-  })))), tab === "history" && /*#__PURE__*/React.createElement("div", null, wos.length === 0 && /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", {
+    style: { marginTop: 12 }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "section-title"
+  }, "🎯 Risk & Strateji"), [["Bakım Stratejisi", m.maint_strategy || "Standart PM"], ["Yedek/Alternatif Kalıp", m.backup_mold_id || (isCriticalMold ? "⚠ Yok" : "—")], ["Tahmini Üretim Kaybı (duruş)", estProdLoss > 0 ? "₺" + Math.round(estProdLoss).toLocaleString("tr-TR") : "—"], ["Bakım/Satın Alma Oranı (RAV)", ravRatio !== null ? ravRatio + "%" + (isRenewalCandidate ? " — Yenileme Adayı ⚠" : "") : "—"]].map(function (_riskRef) {
+    var _riskRef2 = _slicedToArray(_riskRef, 2),
+      l = _riskRef2[0],
+      v = _riskRef2[1];
+    return /*#__PURE__*/React.createElement("div", {
+      key: l,
+      className: "kk-row"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "kk-lbl"
+    }, l), /*#__PURE__*/React.createElement("span", {
+      className: "kk-val",
+      style: isRenewalCandidate && l.indexOf("RAV") === 0 ? { color: "#c62828", fontWeight: 800 } : undefined
+    }, v));
+  }))), /*#__PURE__*/React.createElement(AttachmentsPanel, { entityType: "mold", entityId: m.id, canDelete: !readOnly }))), tab === "history" && /*#__PURE__*/React.createElement("div", null, wos.length === 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       textAlign: "center",
       padding: 40,
@@ -3014,6 +3215,9 @@ function AdminPanel(_ref19) {
     users = data.users,
     wos = data.wos;
   var _jt1 = useState("ARIZ"), _jt2 = _slicedToArray(_jt1, 2), jobType = _jt2[0], setJobType = _jt2[1];
+  var _jtab1 = useState("open"), _jtab2 = _slicedToArray(_jtab1, 2), jobsTab = _jtab2[0], setJobsTab = _jtab2[1];
+  var _jsc1 = useState("created_at"), _jsc2 = _slicedToArray(_jsc1, 2), jobsSortCol = _jsc2[0], setJobsSortCol = _jsc2[1];
+  var _jsd1 = useState("asc"), _jsd2 = _slicedToArray(_jsd1, 2), jobsSortDir = _jsd2[0], setJobsSortDir = _jsd2[1];
   var _useState35 = useState(""),
     _useState36 = _slicedToArray(_useState35, 2),
     search = _useState36[0],
@@ -3496,11 +3700,39 @@ function AdminPanel(_ref19) {
     }));
   }
   if (page === "jobs") {
+    var jobsSortValue = function (wo, col) {
+      if (col === "id") { var m = String(wo.id||"").match(/(\d+)/); return m ? parseInt(m[1]) : 0; }
+      if (col === "priority") { var pr = PRANK[wo.priority]; return pr === undefined ? 9 : pr; }
+      if (col === "mold_id") return wo.mold_id || "";
+      if (col === "type") return wo.type || "";
+      if (col === "status") return wo.status || "";
+      if (col === "tech") { var t = users.find(function (u) { return u.id === wo.assigned; }); return t ? t.name : ""; }
+      if (col === "duration") return (wo.closed_at && wo.started_at) ? calcMin(wo.started_at, wo.closed_at) : -1;
+      if (col === "cost") return (wo.cost_labor || 0) + (wo.cost_parts || 0);
+      return new Date(wo.created_at || 0).getTime();
+    };
+    var jobsToggleSort = function (col) {
+      if (jobsSortCol === col) { setJobsSortDir(jobsSortDir === "asc" ? "desc" : "asc"); }
+      else { setJobsSortCol(col); setJobsSortDir("asc"); }
+    };
+    var jobsSortArrow = function (col) { return jobsSortCol === col ? (jobsSortDir === "asc" ? " \u25B2" : " \u25BC") : ""; };
+    var jobsTh = function (col, label) {
+      return /*#__PURE__*/React.createElement("th", {
+        key: col, onClick: function () { return jobsToggleSort(col); },
+        style: { cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" },
+        title: "Sıralamak için tıklayın"
+      }, label + jobsSortArrow(col));
+    };
+    var closedCount = wos.filter(function (w) { return (jobType === "PM" ? w.type === "PM" : w.type !== "PM") && w.status === "KAPATILDI"; }).length;
+    var openCount = wos.filter(function (w) { return (jobType === "PM" ? w.type === "PM" : w.type !== "PM") && w.status !== "KAPATILDI"; }).length;
     var sorted = _toConsumableArray(wos).filter(function (w) {
       return jobType === "PM" ? w.type === "PM" : w.type !== "PM";
+    }).filter(function (w) {
+      return jobsTab === "closed" ? w.status === "KAPATILDI" : w.status !== "KAPATILDI";
     }).sort(function (a, b) {
-      var _PRANK$a$priority, _PRANK$b$priority;
-      return ((_PRANK$a$priority = PRANK[a.priority]) !== null && _PRANK$a$priority !== void 0 ? _PRANK$a$priority : 9) - ((_PRANK$b$priority = PRANK[b.priority]) !== null && _PRANK$b$priority !== void 0 ? _PRANK$b$priority : 9) || new Date(b.created_at) - new Date(a.created_at);
+      var va = jobsSortValue(a, jobsSortCol), vb = jobsSortValue(b, jobsSortCol);
+      var cmp = va < vb ? -1 : va > vb ? 1 : 0;
+      return jobsSortDir === "asc" ? cmp : -cmp;
     });
     return /*#__PURE__*/React.createElement("div", {
       className: "anim"
@@ -3517,6 +3749,17 @@ function AdminPanel(_ref19) {
                  background: act ? t[2] : "#fff", color: act ? "#fff" : "#4a5568" }
       }, t[1] + " (" + cnt + ")");
     })), /*#__PURE__*/React.createElement("div", {
+      style: { display: "flex", gap: 8, marginBottom: 14 }
+    }, [["open", "🟢 Açık İşler", openCount], ["closed", "⚪ Kapatılan İşler", closedCount]].map(function (t) {
+      var act = jobsTab === t[0];
+      return /*#__PURE__*/React.createElement("button", {
+        key: t[0],
+        onClick: function () { setJobsTab(t[0]); },
+        style: { padding: "7px 16px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                 border: act ? "2px solid #0f2044" : "1px solid #e0e5eb",
+                 background: act ? "#0f2044" : "#fff", color: act ? "#fff" : "#4a5568" }
+      }, t[1] + " (" + t[2] + ")");
+    })), /*#__PURE__*/React.createElement("div", {
       className: "card",
       style: {
         padding: 0,
@@ -3524,7 +3767,13 @@ function AdminPanel(_ref19) {
       }
     }, /*#__PURE__*/React.createElement("div", {
       className: "tbl-wrap"
-    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "\u0130\u015F No"), /*#__PURE__*/React.createElement("th", null, "Tip"), /*#__PURE__*/React.createElement("th", null, "Kal\u0131p"), /*#__PURE__*/React.createElement("th", null, "Referans"), /*#__PURE__*/React.createElement("th", null, "A\xE7\u0131klama"), /*#__PURE__*/React.createElement("th", null, "\xD6ncelik"), /*#__PURE__*/React.createElement("th", null, "Durum"), /*#__PURE__*/React.createElement("th", null, "Teknisyen"), /*#__PURE__*/React.createElement("th", null, "S\xFCre"), /*#__PURE__*/React.createElement("th", null, "Maliyet"))), /*#__PURE__*/React.createElement("tbody", null, sorted.map(function (wo) {
+    }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null,
+      jobsTh("id", "İş No"), jobsTh("type", "Tip"), jobsTh("mold_id", "Kalıp"),
+      /*#__PURE__*/React.createElement("th", { key: "ref" }, "Referans"),
+      /*#__PURE__*/React.createElement("th", { key: "desc" }, "Açıklama"),
+      jobsTh("priority", "Öncelik"), jobsTh("status", "Durum"), jobsTh("tech", "Teknisyen"),
+      jobsTh("duration", "Süre"), jobsTh("cost", "Maliyet")
+    )), /*#__PURE__*/React.createElement("tbody", null, sorted.length === 0 && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", { colSpan: 10, style: { textAlign: "center", padding: 30, color: "#9aa5b4" } }, jobsTab === "closed" ? "Kapatılan iş yok" : "Açık iş yok 👍")), sorted.map(function (wo) {
       var _WO_TYPE_INFO$wo$type5, _WO_TYPE_INFO$wo$type6;
       var tech = users.find(function (u) {
         return u.id === wo.assigned;
@@ -3641,13 +3890,15 @@ function AdminPanel(_ref19) {
         admin: "tag-red",
         leader: "tag-purple",
         tech: "tag-green",
-        op: "tag-orange"
+        op: "tag-orange",
+        kalite: "tag-teal"
       };
       var RL = {
         admin: "Admin",
         leader: "Lider",
         tech: "Teknisyen",
-        op: "Operatör"
+        op: "Operatör",
+        kalite: "Kalite"
       };
       return /*#__PURE__*/React.createElement("tr", {
         key: u.id
@@ -3825,13 +4076,15 @@ function AdminPanel(_ref19) {
       spareparts: "Yedek Parça", users: "Kullanıcılar", audit: "Denetim İzi",
       sysadmin: "Sistem Yönetimi", tvmode: "TV Modu", report: "Arıza Bildir", history: "Geçmiş",
       techmolds: "Kalıplar (Görüntüle)", techpool: "Arıza Havuzu", waiting: "Beklemeye Alınan", done: "Tamamlananlar",
-      mtable: "Müdahale Tablosu", confirm: "Onay Bekleyenler"
+      mtable: "Müdahale Tablosu", confirm: "Onay Bekleyenler",
+      qapprove: "Kalite Onayı Bekleyenler", qhistory: "Onay Geçmişim"
     };
     var roleDefaults = {
       admin: Object.keys(allPages),
       leader: ["dash", "myjobs", "inventory", "jobs", "matrix", "molds", "reports", "critical", "tvmode", "mtable"],
       tech: ["my", "techpool", "techmolds", "waiting", "done", "tvmode"],
-      op: ["report", "history"]
+      op: ["report", "history"],
+      kalite: ["qapprove", "qhistory"]
     };
     var nonAdminUsers = (data.users || []).filter(function(u) { return u.role !== "admin"; });
 
@@ -3853,8 +4106,8 @@ function AdminPanel(_ref19) {
       // Kişi bazlı yetki kartları
       React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(340px,1fr))", gap: 14 } },
         nonAdminUsers.map(function(u) {
-          var roleColor = u.role === "leader" ? "#1565c0" : u.role === "tech" ? "#e65100" : "#1a6b3c";
-          var roleLabel = u.role === "leader" ? "Lider" : u.role === "tech" ? "Teknisyen" : "Operatör";
+          var roleColor = u.role === "leader" ? "#1565c0" : u.role === "tech" ? "#e65100" : u.role === "kalite" ? "#ab47bc" : "#1a6b3c";
+          var roleLabel = u.role === "leader" ? "Lider" : u.role === "tech" ? "Teknisyen" : u.role === "kalite" ? "Kalite" : "Operatör";
           var userPerms = u.custom_pages || roleDefaults[u.role] || [];
           var hasCustom = !!u.custom_pages;
           return React.createElement("div", { key: u.id, className: "card", style: { borderLeft: "4px solid " + roleColor } },
@@ -4969,6 +5222,59 @@ function LeaderPanel(_ref24) {
       openMold: openMold
     });
   }
+  if (page === "verify") {
+    var _toVerify = (wos || []).filter(function(w) { return w.status === "TAMAMLANDI"; });
+    return React.createElement("div", { className: "anim" },
+      React.createElement("h2", { style: { fontSize: 16, fontWeight: 800, color: "var(--brand-primary)", marginBottom: 4 } }, "🔎 Doğrulama Bekleyen İşler (" + _toVerify.length + ")"),
+      React.createElement("p", { style: { fontSize: 12, color: "#6b7fa3", marginBottom: 14 } }, "KRİTİK öncelikli işler, teknisyen tarafından tamamlandıktan sonra kapatılmadan önce burada onayınızı bekler — işi yapan kişi kendi işini kapatamaz."),
+      _toVerify.length === 0 && React.createElement("div", { className: "card", style: { textAlign: "center", padding: 40, color: "#6b7fa3" } }, "Doğrulama bekleyen iş yok 👍"),
+      _toVerify.map(function(wo) {
+        var mold = (data.molds || []).find(function(m) { return m.id === wo.mold_id; });
+        var techU = (data.users || []).find(function(u) { return u.id === wo.assigned; });
+        var lastAction = (wo.actions || []).slice(-1)[0];
+        return React.createElement("div", { key: wo.id, className: "card", style: { marginBottom: 12, borderLeft: "4px solid #c62828" } },
+          React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 8 } },
+            React.createElement("div", null,
+              React.createElement("span", { style: { fontWeight: 800, fontSize: 14, color: "var(--brand-primary)" } }, wo.id),
+              React.createElement("span", { style: { marginLeft: 8, fontSize: 10, background: "#fff0f0", color: "#c62828", padding: "2px 8px", borderRadius: 4, fontWeight: 700 } }, wo.priority || "KRİTİK")),
+            React.createElement("span", { style: { fontSize: 10, color: "#9aa5b4" } }, techU ? "Yapan: " + techU.name : "")),
+          React.createElement("div", { style: { fontSize: 12, color: "#2d3748", marginBottom: 3 } }, wo.description || ""),
+          React.createElement("div", { style: { fontSize: 11, color: "#6b7fa3", marginBottom: 8 } },
+            wo.mold_id + (mold ? " — " + (mold.part_name || "").slice(0, 30) : "")),
+          lastAction && lastAction.det && React.createElement("div", { style: { background: "#f0f9f0", border: "1px solid #c8e6c9", borderRadius: 8, padding: "8px 12px", fontSize: 11, color: "#1a6b3c", marginBottom: 10 } },
+            React.createElement("strong", null, "🔧 Yapılan işlem: "), lastAction.det),
+          React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap" } },
+            React.createElement("button", {
+              className: "btn", style: { background: "#1a6b3c", color: "#fff", fontWeight: 800, padding: "10px 20px" },
+              onClick: function() {
+                if (!window.confirm("İşin gerçekten tamamlandığını onaylayıp kapatıyor musunuz?")) return;
+                var ts = nowStr();
+                updWO(wo.id, function(x) { x.status = "KAPATILDI"; x.verified_by = user.id; x.verified_at = ts; return x; });
+                addAuditLog && addAuditLog({ user_id: user.id, user_name: user.name, role: "leader", action: "İş Doğrulandı ve Kapatıldı",
+                  entity_type: "wo", entity_id: wo.id, detail: wo.id + " " + user.name + " tarafından doğrulanıp kapatıldı" });
+              }
+            }, "✅ Doğrula ve Kapat"),
+            React.createElement("button", {
+              className: "btn", style: { background: "#c62828", color: "#fff", fontWeight: 800, padding: "10px 20px" },
+              onClick: function() {
+                var why = window.prompt("İş yetersiz/eksik. Kısaca açıklayın:");
+                if (!why || !why.trim()) return;
+                updWO(wo.id, function(x) {
+                  x.status = "DEVAM_EDİYOR";
+                  x.closed_at = null;
+                  x.verify_reject_note = why.trim();
+                  x.description = (x.description || "") + " | ⚠ DOĞRULAMA REDDEDİLDİ: " + why.trim();
+                  return x;
+                });
+                addAuditLog && addAuditLog({ user_id: user.id, user_name: user.name, role: "leader", action: "Doğrulama Reddedildi",
+                  entity_type: "wo", entity_id: wo.id, detail: wo.id + " işe geri gönderildi: " + why.trim() });
+              }
+            }, "↩️ Reddet, İşe Geri Gönder")
+          )
+        );
+      })
+    );
+  }
   return null;
 }
 function AssignModal(_ref25) {
@@ -5051,6 +5357,121 @@ function AssignModal(_ref25) {
     onClick: onClose
   }, "\u0130ptal"))));
 }
+// Otonom Bakım (TPM 1. sütun) — operatörün vardiya başında yaptığı 2 dakikalık
+// göz kontrolü. Arıza henüz oluşmadan erken sinyalleri (sızıntı, ses, gevşek
+// parça) yakalar; anormal işaretlenen madde otomatik düşük öncelikli bir iş
+// emrine dönüşür.
+var EYE_CHECK_ITEMS = [
+  { code: "sizinti", label: "Sızıntı var mı? (yağ, hidrolik, soğutma suyu)" },
+  { code: "ses", label: "Anormal ses veya titreşim var mı?" },
+  { code: "gevsek", label: "Gevşek, aşınmış veya kırık parça görünüyor mu?" },
+  { code: "isinma", label: "Anormal ısınma var mı?" },
+  { code: "temizlik", label: "Kalıp/makine çevresi temiz ve düzenli mi?" }
+];
+function DailyEyeCheckModal(_ref25b) {
+  var molds = _ref25b.molds, user = _ref25b.user, onClose = _ref25b.onClose, addWO = _ref25b.addWO, addAuditLog = _ref25b.addAuditLog;
+  var _mid = useState(""), _mid2 = _slicedToArray(_mid, 2), moldId = _mid2[0], setMoldId = _mid2[1];
+  var _ans = useState({}), _ans2 = _slicedToArray(_ans, 2), answers = _ans2[0], setAnswers = _ans2[1];
+  var _notes = useState({}), _notes2 = _slicedToArray(_notes, 2), notes = _notes2[0], setNotes = _notes2[1];
+  var _submitting = useState(false), _submitting2 = _slicedToArray(_submitting, 2), submitting = _submitting2[0], setSubmitting = _submitting2[1];
+
+  var setAns = function (code, v) { setAnswers(function (p) { return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, code, v)); }); };
+  var setNote = function (code, v) { setNotes(function (p) { return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, code, v)); }); };
+
+  var allAnswered = EYE_CHECK_ITEMS.every(function (it) { return answers[it.code] === "ok" || answers[it.code] === "anormal"; });
+  var abnormalItems = EYE_CHECK_ITEMS.filter(function (it) { return answers[it.code] === "anormal"; });
+
+  var submit = function () {
+    if (!moldId) { alert("Kalıp seçimi zorunlu!"); return; }
+    if (!allAnswered) { alert("Lütfen tüm maddeleri işaretleyin!"); return; }
+    setSubmitting(true);
+    var m = molds.find(function (mm) { return mm.id === moldId; });
+    var finish = function () {
+      addAuditLog && addAuditLog({
+        user_id: user ? user.id : "op", user_name: user ? user.name : "Operatör", role: "op",
+        action: "Günlük Göz Kontrolü Yapıldı", entity_type: "mold", entity_id: moldId,
+        detail: abnormalItems.length > 0
+          ? abnormalItems.length + " madde anormal işaretlendi, iş emri açıldı"
+          : "Tüm maddeler normal"
+      });
+      setSubmitting(false);
+      alert(abnormalItems.length > 0
+        ? "✅ Göz kontrolü kaydedildi, " + abnormalItems.length + " anormallik için iş emri açıldı."
+        : "✅ Göz kontrolü kaydedildi, anormallik bulunmadı.");
+      onClose();
+    };
+    if (abnormalItems.length === 0) { finish(); return; }
+    var description = "Günlük göz kontrolünde tespit edilen anormallikler:\n" +
+      abnormalItems.map(function (it) { return "• " + it.label + (notes[it.code] ? " — " + notes[it.code] : ""); }).join("\n");
+    fetch("/api/workorders", {
+      method: "POST", headers: apiHeaders(),
+      body: JSON.stringify({
+        mold_id: moldId, type: "ARIZ", fail_code: "DIGER", priority: "DÜŞÜK",
+        description: description, reported_by: user ? user.id : "op",
+        machine: m ? (m.location || m.machines || "") : "",
+        source: "gunluk_goz_kontrolu"
+      })
+    }).then(function (r) { return r.json(); }).then(function (result) {
+      if (result.ok && result.wo && addWO) addWO(result.wo);
+      finish();
+    }).catch(function () { setSubmitting(false); alert("❌ Sunucuya ulaşılamadı — internet bağlantısını kontrol edin"); });
+  };
+
+  return React.createElement("div", { className: "modal-bg", onClick: function (e) { return e.target === e.currentTarget && onClose(); } },
+    React.createElement("div", { className: "modal", style: { maxWidth: 560 } },
+      React.createElement("div", { className: "modal-head" },
+        React.createElement("h2", null, "🔍 Günlük Göz Kontrolü"),
+        React.createElement("button", { className: "close-btn", onClick: onClose }, "✕")
+      ),
+      React.createElement("div", { className: "modal-body" },
+        React.createElement("div", { className: "form-group" },
+          React.createElement("label", { className: "form-label" }, "Kalıp *"),
+          React.createElement("select", {
+            className: "form-input", value: moldId,
+            onChange: function (e) { return setMoldId(e.target.value); }
+          },
+            React.createElement("option", { value: "" }, "— Kalıp seçin —"),
+            molds.slice().sort(function (a, b) { return a.id.localeCompare(b.id); }).map(function (m) {
+              return React.createElement("option", { key: m.id, value: m.id }, m.id + " — " + m.part_name);
+            })
+          )
+        ),
+        React.createElement("div", { className: "form-hint", style: { marginBottom: 14 } },
+          "Vardiya başında 2 dakikanızı ayırın — erken fark edilen bir sızıntı veya ses, büyük bir arızayı önleyebilir."),
+        EYE_CHECK_ITEMS.map(function (it) {
+          return React.createElement("div", { key: it.code, style: { marginBottom: 12, paddingBottom: 12, borderBottom: "1px solid #f0f3f7" } },
+            React.createElement("div", { style: { fontSize: 13, fontWeight: 600, marginBottom: 6 } }, it.label),
+            React.createElement("div", { style: { display: "flex", gap: 8 } },
+              React.createElement("button", {
+                type: "button",
+                className: "btn btn-sm " + (answers[it.code] === "ok" ? "btn-primary" : "btn-ghost"),
+                onClick: function () { return setAns(it.code, "ok"); }
+              }, "✅ Normal"),
+              React.createElement("button", {
+                type: "button",
+                className: "btn btn-sm " + (answers[it.code] === "anormal" ? "btn-danger" : "btn-ghost"),
+                onClick: function () { return setAns(it.code, "anormal"); }
+              }, "⚠ Anormal")
+            ),
+            answers[it.code] === "anormal" && React.createElement("input", {
+              className: "form-input", style: { marginTop: 8 },
+              placeholder: "Kısa not (opsiyonel)",
+              value: notes[it.code] || "",
+              onChange: function (e) { return setNote(it.code, e.target.value); }
+            })
+          );
+        })
+      ),
+      React.createElement("div", { className: "modal-foot" },
+        React.createElement("button", { className: "btn btn-ghost", onClick: onClose }, "İptal"),
+        React.createElement("button", {
+          className: "btn btn-primary", disabled: submitting,
+          onClick: submit
+        }, submitting ? "⏳ Kaydediliyor..." : "💾 Kontrolü Kaydet")
+      )
+    )
+  );
+}
 function OperatorPanel(_ref26) {
   var data = _ref26.data,
     page = _ref26.page,
@@ -5065,6 +5486,10 @@ function OperatorPanel(_ref26) {
     _useState72 = _slicedToArray(_useState71, 2),
     showForm = _useState72[0],
     setShowForm = _useState72[1];
+  var _useStateEC = useState(false),
+    _useStateEC2 = _slicedToArray(_useStateEC, 2),
+    showEyeCheck = _useStateEC2[0],
+    setShowEyeCheck = _useStateEC2[1];
   var _useState73 = useState({
       mold_id: "",
       machine: "",
@@ -5140,7 +5565,8 @@ function OperatorPanel(_ref26) {
       active_reference: f.active_reference || "",
       reported_by: user ? user.id : "op",
       machine: _selM ? (_selM.location || _selM.machines || "") : "",
-      notes: f.initial_assessment || ""
+      notes: f.initial_assessment || "",
+      impact: f.impact || "Üretim Devam"
     };
     // DOĞRUDAN API'YE GÖNDER — persist zincirine bağımlı değil
     fetch("/api/workorders", {
@@ -5189,7 +5615,14 @@ function OperatorPanel(_ref26) {
       onClick: function onClick() {
         return setShowForm(true);
       }
-    }, "\uD83D\uDEA8 Yeni Ar\u0131za Bildirimi A\xE7"), showForm && /*#__PURE__*/React.createElement("div", {
+    }, "\uD83D\uDEA8 Yeni Ar\u0131za Bildirimi A\xE7"), !showForm && /*#__PURE__*/React.createElement("button", {
+      className: "btn btn-ghost",
+      style: { fontSize: 14, padding: "13px 28px", marginLeft: 10 },
+      onClick: function () { return setShowEyeCheck(true); }
+    }, "🔍 Günlük Göz Kontrolü"), showEyeCheck && /*#__PURE__*/React.createElement(DailyEyeCheckModal, {
+      molds: molds, user: user, addWO: addWO, addAuditLog: addAuditLog,
+      onClose: function () { return setShowEyeCheck(false); }
+    }), showForm && /*#__PURE__*/React.createElement("div", {
       className: "card",
       style: {
         maxWidth: 580
@@ -5616,6 +6049,109 @@ function OperatorPanel(_ref26) {
   }
   return null;
 }
+// Kalite rolü — kapanışı kalite onayı gerektiren iş emirlerini onaylar/reddeder.
+// Sistem ayarı kapalıyken bu role hiçbir iş düşmez (queue her zaman boş görünür).
+function qualityReasonLabel(wo) {
+  if (wo.type === "MODİF") return "Modifikasyon";
+  if (wo.impact === "Kalite Sorunu") return "Kalite Sorunu (operatör bildirdi)";
+  var cat = (typeof FAIL_CATS !== "undefined" ? FAIL_CATS : []).find(function (c) { return c.c === wo.fail_code; });
+  return "Arıza tipi: " + ((cat && cat.l) || wo.fail_code || "—");
+}
+function KalitePanel(_ref100) {
+  var data = _ref100.data, page = _ref100.page, user = _ref100.user, updWO = _ref100.updWO, addAuditLog = _ref100.addAuditLog, openMold = _ref100.openMold;
+  var molds = data.molds, wos = data.wos, users = data.users;
+
+  if (page === "qapprove") {
+    var pending = wos.filter(function (w) { return w.status === "KALITE_BEKLIYOR"; })
+      .sort(function (a, b) { return new Date(a.created_at) - new Date(b.created_at); });
+    return React.createElement("div", { className: "anim" },
+      React.createElement("p", { style: { fontSize: 12, color: "#6b7fa3", marginBottom: 14 } },
+        "Bu işler teknisyen (ve gerekiyorsa lider) tarafından tamamlandı, kapanmadan önce kalite onayınızı bekliyor."),
+      pending.length === 0 && React.createElement("div", { className: "card", style: { textAlign: "center", padding: 40, color: "#6b7fa3" } }, "Onay bekleyen iş yok 👍"),
+      pending.map(function (wo) {
+        var mold = molds.find(function (m) { return m.id === wo.mold_id; });
+        var tech = users.find(function (u) { return u.id === wo.assigned; });
+        var lastAction = (wo.actions || []).slice(-1)[0];
+        return React.createElement("div", { key: wo.id, className: "card", style: { marginBottom: 12, borderLeft: "4px solid #ab47bc" } },
+          React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 8 } },
+            React.createElement("div", null,
+              React.createElement("span", {
+                style: { cursor: "pointer", fontWeight: 800, fontSize: 14, color: "var(--brand-primary)" },
+                onClick: function () { return openMold && openMold(wo.mold_id); }
+              }, wo.mold_id),
+              React.createElement("span", { className: "tag", style: { marginLeft: 8, fontSize: 10, background: "#f3e5f5", color: "#7b1fa2", fontWeight: 700 } }, qualityReasonLabel(wo))),
+            React.createElement("span", { style: { fontSize: 10, color: "#9aa5b4" } }, tech ? "Yapan: " + tech.name : "")),
+          React.createElement("div", { style: { fontSize: 12, color: "#2d3748", marginBottom: 3 } }, wo.description || ""),
+          React.createElement("div", { style: { fontSize: 11, color: "#6b7fa3", marginBottom: 8 } },
+            wo.mold_id + (mold ? " — " + (mold.part_name || "").slice(0, 30) : "")),
+          lastAction && lastAction.det && React.createElement("div", { style: { background: "#f0f9f0", border: "1px solid #c8e6c9", borderRadius: 8, padding: "8px 12px", fontSize: 11, color: "#1a6b3c", marginBottom: 10 } },
+            React.createElement("strong", null, "🔧 Yapılan işlem: "), lastAction.det),
+          React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap" } },
+            React.createElement("button", {
+              className: "btn", style: { background: "#1a6b3c", color: "#fff", fontWeight: 800, padding: "10px 20px" },
+              onClick: function () {
+                if (!window.confirm("Bu işi kalite açısından onaylayıp kapatıyor musunuz?")) return;
+                var ts = nowStr();
+                updWO(wo.id, function (w) {
+                  return _objectSpread(_objectSpread({}, w), {}, {
+                    status: "KAPATILDI", closed_at: ts,
+                    quality_approved: true, quality_approved_by: user.id, quality_approved_at: ts,
+                    actions: [].concat(_toConsumableArray(w.actions || []), [{ ts: ts, user: user.id, act: "Kalite Onayı Verildi", det: "Kalite tarafından onaylanıp kapatıldı" }])
+                  });
+                });
+                addAuditLog && addAuditLog({ user_id: user.id, user_name: user.name, role: "kalite", action: "Kalite Onayı Verildi",
+                  entity_type: "wo", entity_id: wo.id, detail: wo.id + " " + user.name + " tarafından onaylanıp kapatıldı" });
+              }
+            }, "✅ Onayla ve Kapat"),
+            React.createElement("button", {
+              className: "btn", style: { background: "#c62828", color: "#fff", fontWeight: 800, padding: "10px 20px" },
+              onClick: function () {
+                var why = window.prompt("Kalite açısından yetersiz/eksik. Kısaca açıklayın:");
+                if (!why || !why.trim()) return;
+                updWO(wo.id, function (w) {
+                  return _objectSpread(_objectSpread({}, w), {}, {
+                    status: "DEVAM_EDİYOR", closed_at: null, quality_approved: false,
+                    quality_reject_note: why.trim(),
+                    description: (w.description || "") + " | ⚠ KALİTE REDDETTİ: " + why.trim()
+                  });
+                });
+                addAuditLog && addAuditLog({ user_id: user.id, user_name: user.name, role: "kalite", action: "Kalite Onayı Reddedildi",
+                  entity_type: "wo", entity_id: wo.id, detail: wo.id + " işe geri gönderildi: " + why.trim() });
+              }
+            }, "↩️ Reddet, İşe Geri Gönder")
+          )
+        );
+      })
+    );
+  }
+
+  if (page === "qhistory") {
+    var mine = wos.filter(function (w) { return w.quality_approved_by === user.id; })
+      .sort(function (a, b) { return new Date(b.quality_approved_at || 0) - new Date(a.quality_approved_at || 0); });
+    return React.createElement("div", { className: "anim" },
+      React.createElement("div", { className: "card", style: { padding: 0, overflow: "hidden" } },
+        React.createElement("div", { className: "tbl-wrap" },
+          React.createElement("table", null,
+            React.createElement("thead", null, React.createElement("tr", null,
+              ["İş No", "Kalıp", "Sebep", "Onay Tarihi"].map(function (h) {
+                return React.createElement("th", { key: h }, h);
+              }))),
+            React.createElement("tbody", null, mine.map(function (wo) {
+              return React.createElement("tr", { key: wo.id },
+                React.createElement("td", null, React.createElement("strong", null, wo.id)),
+                React.createElement("td", null,
+                  React.createElement("span", { style: { color: "#1565c0", fontWeight: 700, cursor: "pointer" }, onClick: function () { return openMold && openMold(wo.mold_id); } }, wo.mold_id)),
+                React.createElement("td", { style: { fontSize: 11 } }, qualityReasonLabel(wo)),
+                React.createElement("td", { style: { fontSize: 11 } }, wo.quality_approved_at || "—"));
+            }))
+          ),
+          mine.length === 0 && React.createElement("div", { style: { textAlign: "center", padding: 40, color: "#9aa5b4" } }, "Henüz onayladığınız bir iş yok")
+        )
+      )
+    );
+  }
+  return null;
+}
 function TechPanel(_ref27) {
   var data = _ref27.data,
     page = _ref27.page,
@@ -5692,7 +6228,7 @@ function TechPanel(_ref27) {
     return w.status === "BEKLEMEYE_ALINDI";
   });
   var done = myWOs.filter(function (w) {
-    return w.status === "KAPATILDI";
+    return w.status === "KAPATILDI" || w.status === "TAMAMLANDI" || w.status === "KALITE_BEKLIYOR";
   });
   var openModal = function openModal(wo, m) {
     setSelWO(wo);
@@ -5784,10 +6320,16 @@ function TechPanel(_ref27) {
       };
     });
     var _cwo = selWO;
+    // KRİTİK öncelikli işler doğrudan kapatılamaz — işi yapan teknisyen kendi
+    // işini onaylayamaz (bkz. denetim raporu). Lider/admin "Doğrulama Bekleyen
+    // İşler" ekranından onaylayıp gerçek KAPATILDI'ya geçirir. Sunucu da bu
+    // kuralı ayrıca zorunlu kılıyor (server.js, POST /api/state) — burası sadece
+    // doğru etiketin anında görünmesi için.
+    var needsVerification = _cwo.priority === "KRİTİK";
     updWO(selWO.id, function (w) {
       return _objectSpread(_objectSpread({}, w), {}, {
-        status: "KAPATILDI",
-        closed_at: ts,
+        status: needsVerification ? "TAMAMLANDI" : "KAPATILDI",
+        closed_at: needsVerification ? null : ts,
         checklist_done: checklist,
         parts_used: up,
         cost_labor: parseFloat(costL) || 0,
@@ -5795,7 +6337,7 @@ function TechPanel(_ref27) {
         actions: [].concat(_toConsumableArray(w.actions || []), [{
           ts: ts,
           user: user.id,
-          act: "Tamamlandı",
+          act: needsVerification ? "Tamamlandı (doğrulama bekliyor)" : "Tamamlandı",
           det: txt
         }])
       });
@@ -7580,7 +8122,9 @@ function UserFormModal(_ref31) {
     value: "tech"
   }, "Teknisyen"), /*#__PURE__*/React.createElement("option", {
     value: "op"
-  }, "Operat\xF6r")))), /*#__PURE__*/React.createElement("div", {
+  }, "Operat\xF6r"), /*#__PURE__*/React.createElement("option", {
+    value: "kalite"
+  }, "Kalite")))), /*#__PURE__*/React.createElement("div", {
     className: "modal-foot"
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn btn-ghost",
@@ -7611,6 +8155,28 @@ function calcPMCompliance(wos) {
     return w.status === "KAPATILDI";
   }).length;
   return Math.round(done / pmAll.length * 100);
+}
+
+// PM Checklist Tamamlanma Oranı — "PM yapıldı" ile "PM'in TÜM maddeleri
+// yapıldı" arasındaki farkı gösterir. checklist_done'daki en yüksek seviyeli
+// maddeye göre o PM ziyaretinin hedef seviyesi belirlenir (ör. 3 aylık PM'de
+// haftalık maddeler de dahildir), sonra işaretlenen/toplam oranı hesaplanır.
+function calcChecklistCompletionRate(wos) {
+  var pmWos = wos.filter(function (w) { return w.type === "PM" && (w.checklist_done || []).length > 0; });
+  if (!pmWos.length) return null;
+  var doneSum = 0, totalSum = 0;
+  pmWos.forEach(function (w) {
+    var done = w.checklist_done || [];
+    var maxLvl = done.reduce(function (max, label) {
+      var code = String(label).split(" - ")[0];
+      var item = PM_CHECKLIST.find(function (x) { return x.code === code; });
+      return item ? Math.max(max, item.lvl) : max;
+    }, 1);
+    var relevant = PM_CHECKLIST.filter(function (x) { return x.lvl <= maxLvl; });
+    doneSum += done.length;
+    totalSum += relevant.length;
+  });
+  return totalSum > 0 ? Math.round(doneSum / totalSum * 100) : null;
 }
 
 // Planlı Bakım Yüzdesi (PMP) — planlı / toplam iş
@@ -7721,6 +8287,17 @@ function calcEmergencyRate(wos) {
   }).length / wos.length * 100);
 }
 
+// Kalite Kaynaklı Arıza Oranı — operatörün "Arıza Bildir" formundaki "Üretim
+// Etkisi" alanında "Kalite Sorunu" işaretlediği arızaların oranı. Kalıp
+// aşınması genelde önce üründe (fire/boyut sapması) görülür, arıza olarak
+// günler sonra ortaya çıkar — bu oran, bakımın bu erken sinyali ne kadar
+// yakaladığının kaba bir göstergesidir.
+function calcQualityRate(wos) {
+  var arizWos = wos.filter(function (w) { return w.type === "ARIZ"; });
+  if (!arizWos.length) return 0;
+  return Math.round(arizWos.filter(function (w) { return w.impact === "Kalite Sorunu"; }).length / arizWos.length * 100);
+}
+
 // Kalıp Güvenilirlik Skoru (0-100)
 function calcReliabilityScore(moldId, wos) {
   var moldWos = wos.filter(function (w) {
@@ -7776,19 +8353,26 @@ function AnalyticsPanel(_ref32) {
     });
   }, [wos, timeRange]);
   var pmCompliance = calcPMCompliance(filteredWos);
+  var checklistRate = calcChecklistCompletionRate(filteredWos);
   var pr = calcPlannedReactive(filteredWos);
   var backlog = calcBacklogAge(filteredWos);
   var ftfr = calcFTFR(filteredWos);
   var emergencyRate = calcEmergencyRate(filteredWos);
+  var qualityRate = calcQualityRate(filteredWos);
   var techs = users.filter(function (u) {
     return u.role === "tech" || u.role === "leader";
   });
+  var criticalMoldIdsSet = new Set(wos.filter(function (w) { return w.priority === "KRİTİK"; }).map(function (w) { return w.mold_id; }));
+  var moldsWithoutBackup = molds.filter(function (m) { return criticalMoldIdsSet.has(m.id) && !m.backup_mold_id; });
+  var chronicWithoutRCA = detectChronicFailures(wos).filter(function (c) { return !c.hasRCA; });
 
   // Benchmark renkleri
   var pmColor = pmCompliance === null ? "#9aa5b4" : pmCompliance >= 90 ? "#1a6b3c" : pmCompliance >= 75 ? "#e65100" : "#c62828";
+  var checklistColor = checklistRate === null ? "#9aa5b4" : checklistRate >= 90 ? "#1a6b3c" : checklistRate >= 75 ? "#e65100" : "#c62828";
   var pmpColor = pr.pmpPct >= 80 ? "#1a6b3c" : pr.pmpPct >= 60 ? "#e65100" : "#c62828";
   var ftfrColor = ftfr === null ? "#9aa5b4" : ftfr >= 85 ? "#1a6b3c" : ftfr >= 70 ? "#e65100" : "#c62828";
   var emgColor = emergencyRate <= 10 ? "#1a6b3c" : emergencyRate <= 20 ? "#e65100" : "#c62828";
+  var qualColor = qualityRate <= 10 ? "#1a6b3c" : qualityRate <= 25 ? "#e65100" : "#c62828";
   return /*#__PURE__*/React.createElement("div", {
     className: "anim"
   }, /*#__PURE__*/React.createElement("div", {
@@ -7854,6 +8438,20 @@ function AnalyticsPanel(_ref32) {
     bench: "Hedef: ≤10%",
     icon: "🚨",
     sub: emergencyRate <= 10 ? "İyi kontrol ✅" : emergencyRate <= 20 ? "Dikkat ⚠" : "Çok yüksek ❌"
+  }, {
+    l: "Kalite Kaynaklı Arıza",
+    v: qualityRate + "%",
+    c: qualColor,
+    bench: "Fire/kalite sorunu nedeniyle açılan arıza oranı",
+    icon: "🔬",
+    sub: qualityRate <= 10 ? "Düşük ✅" : qualityRate <= 25 ? "İzlenmeli ⚠" : "Yüksek ❌"
+  }, {
+    l: "Checklist Tamamlanma",
+    v: checklistRate !== null ? checklistRate + "%" : "—",
+    c: checklistColor,
+    bench: "PM'de işaretlenen madde / gerekli madde sayısı",
+    icon: "☑️",
+    sub: checklistRate === null ? "Veri yok" : checklistRate >= 90 ? "Eksiksiz ✅" : checklistRate >= 75 ? "Kısmi atlama ⚠" : "Sık atlanıyor ❌"
   }].map(function (s) {
     return /*#__PURE__*/React.createElement("div", {
       key: s.l,
@@ -7901,7 +8499,21 @@ function AnalyticsPanel(_ref32) {
         marginTop: 2
       }
     }, s.bench)));
-  })), /*#__PURE__*/React.createElement("div", {
+  })), moldsWithoutBackup.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "alert-box alert-warning",
+    style: { marginBottom: 18, fontSize: 12 }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { fontWeight: 800, marginBottom: 4 }
+  }, "⚠ Yedeği Olmayan Kritik Kalıp (" + moldsWithoutBackup.length + ")"), /*#__PURE__*/React.createElement("div", {
+    style: { color: "#6b7fa3" }
+  }, "Bu kalıplar geçmişte KRİTİK öncelikli arıza almış ama yedek/alternatif kalıp bilgisi tanımlı değil: ", moldsWithoutBackup.map(function (m) { return m.id; }).join(", "))), chronicWithoutRCA.length > 0 && /*#__PURE__*/React.createElement("div", {
+    className: "alert-box alert-danger",
+    style: { marginBottom: 18, fontSize: 12 }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { fontWeight: 800, marginBottom: 4 }
+  }, "🔁 Kronik Arıza — RCA Gerekli (" + chronicWithoutRCA.length + ")"), /*#__PURE__*/React.createElement("div", {
+    style: { color: "#6b7fa3" }
+  }, "Aynı kalıpta aynı arıza 3+ kez tekrarlanmış ama kök neden analizi (RCA) girilmemiş — bu iş emirleri RCA eklenene kadar kapatılamaz: ", chronicWithoutRCA.map(function (c) { return c.mold_id + " (" + c.fail_code + ")"; }).join(", "))), /*#__PURE__*/React.createElement("div", {
     className: "tabs"
   }, [{
     id: "overview",
@@ -8452,7 +9064,8 @@ function AnalyticsPanel(_ref32) {
       admin: "Admin",
       leader: "Lider",
       tech: "Teknisyen",
-      op: "Operatör"
+      op: "Operatör",
+      kalite: "Kalite"
     };
     return /*#__PURE__*/React.createElement("div", {
       key: t.id,
@@ -8938,7 +9551,8 @@ function AdminDashboardV14(_ref43) {
       admin: "Admin",
       leader: "Lider",
       tech: "Teknisyen",
-      op: "Operatör"
+      op: "Operatör",
+      kalite: "Kalite"
     };
     var allJobs = activeList.concat(waitingList).concat(assignedList);
     return /*#__PURE__*/React.createElement("div", {
@@ -10287,7 +10901,8 @@ function PartsEditor(_ref64) {
       stock: 0,
       unit: "adet",
       critical: false,
-      min_stock: 2
+      min_stock: 2,
+      supplier: ""
     }),
     _useState122 = _slicedToArray(_useState121, 2),
     newPart = _useState122[0],
@@ -10334,7 +10949,8 @@ function PartsEditor(_ref64) {
       stock: 0,
       unit: "adet",
       critical: false,
-      min_stock: 2
+      min_stock: 2,
+      supplier: ""
     });
   };
   var deletePart = function deletePart(pid) {
@@ -10366,7 +10982,8 @@ function PartsEditor(_ref64) {
       stock: p.stock,
       unit: p.unit || "adet",
       critical: !!p.critical,
-      min_stock: p.min_stock || 2
+      min_stock: p.min_stock || 2,
+      supplier: p.supplier || ""
     });
     setShowForm(true);
   };
@@ -10393,7 +11010,8 @@ function PartsEditor(_ref64) {
         stock: 0,
         unit: "adet",
         critical: false,
-        min_stock: 2
+        min_stock: 2,
+        supplier: ""
       });
       setShowForm(true);
     }
@@ -10470,6 +11088,17 @@ function PartsEditor(_ref64) {
     onChange: function onChange(e) {
       return np("min_stock", parseInt(e.target.value) || 0);
     }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Tedarik\xE7i"), /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    value: newPart.supplier || "",
+    onChange: function onChange(e) {
+      return np("supplier", e.target.value);
+    },
+    placeholder: "\xD6rn. ABC Otomasyon"
   })), /*#__PURE__*/React.createElement("div", {
     className: "form-group"
   }, /*#__PURE__*/React.createElement("label", {
@@ -10555,7 +11184,7 @@ function PartsEditor(_ref64) {
     style: {
       textAlign: "center"
     }
-  }, "Min Stok"), /*#__PURE__*/React.createElement("th", null, "Birim"), /*#__PURE__*/React.createElement("th", null, "\xD6ncelik"), /*#__PURE__*/React.createElement("th", {
+  }, "Min Stok"), /*#__PURE__*/React.createElement("th", null, "Birim"), /*#__PURE__*/React.createElement("th", null, "Tedarik\xE7i"), /*#__PURE__*/React.createElement("th", null, "\xD6ncelik"), /*#__PURE__*/React.createElement("th", {
     style: {
       textAlign: "center"
     }
@@ -10620,7 +11249,12 @@ function PartsEditor(_ref64) {
         fontSize: 11,
         color: "#6b7fa3"
       }
-    }, p.unit || "adet"), /*#__PURE__*/React.createElement("td", null, p.critical ? /*#__PURE__*/React.createElement("span", {
+    }, p.unit || "adet"), /*#__PURE__*/React.createElement("td", {
+      style: {
+        fontSize: 11,
+        color: "#6b7fa3"
+      }
+    }, p.supplier || "—"), /*#__PURE__*/React.createElement("td", null, p.critical ? /*#__PURE__*/React.createElement("span", {
       className: "tag tag-red"
     }, "\uD83D\uDD34 Kritik") : /*#__PURE__*/React.createElement("span", {
       className: "tag tag-gray"
@@ -10997,7 +11631,63 @@ function MoldEditModal(_ref65) {
       return set("machines", e.target.value);
     },
     placeholder: "E-12, E-14"
-  }))), tab === "pm" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "form-grid-2",
+    style: { marginTop: 14 }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Yedek / Alternatif Kalıp ID"), /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    value: f.backup_mold_id || "",
+    onChange: function onChange(e) {
+      return set("backup_mold_id", e.target.value);
+    },
+    placeholder: "Örn: M-0245"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "form-hint"
+  }, "Aynı ürünü üretebilecek yedek kalıp varsa kodunu girin")), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Bakım Stratejisi (RCM)"), /*#__PURE__*/React.createElement("select", {
+    className: "form-input",
+    value: f.maint_strategy || "Standart PM",
+    onChange: function onChange(e) {
+      return set("maint_strategy", e.target.value);
+    }
+  }, /*#__PURE__*/React.createElement("option", null, "Standart PM"), /*#__PURE__*/React.createElement("option", null, "Sıklaştırılmış PM"), /*#__PURE__*/React.createElement("option", null, "Durum Bazlı İzleme"), /*#__PURE__*/React.createElement("option", null, "Arızalanınca Değiştir"))), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Saatlik Üretim Değeri (₺)"), /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    type: "number",
+    min: "0",
+    value: f.hourly_prod_value || "",
+    onChange: function onChange(e) {
+      return set("hourly_prod_value", +e.target.value);
+    },
+    placeholder: "Örn: 5000"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "form-hint"
+  }, "Bu kalıp 1 saat dururken kaybedilen tahmini üretim değeri")), /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Satın Alma Değeri (₺)"), /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    type: "number",
+    min: "0",
+    value: f.purchase_value || "",
+    onChange: function onChange(e) {
+      return set("purchase_value", +e.target.value);
+    },
+    placeholder: "Örn: 350000"
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "form-hint"
+  }, "RAV/TCO oranı hesaplamasında kullanılır")))), tab === "pm" && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "alert-box alert-info",
     style: {
       marginBottom: 14
@@ -11928,6 +12618,7 @@ function GlobalSparePartsPage(_ref67) {
             name: p.name,
             unit: p.unit || "adet",
             critical: p.critical,
+            supplier: p.supplier || "",
             instances: []
           };
         }
@@ -11961,6 +12652,22 @@ function GlobalSparePartsPage(_ref67) {
       return a.name.localeCompare(b.name, "tr");
     });
   }, [molds, wos]);
+  // Tedarikçi Karnesi — parça bazlı tüketim verisini tedarikçiye göre topla.
+  // Sadece parça kaydına tedarikçi girilmişse görünür (geriye dönük uyumlu).
+  var bySupplier = useMemo(function () {
+    var map = {};
+    allParts.forEach(function (p) {
+      var s = (p.supplier || "").trim();
+      if (!s) return;
+      if (!map[s]) map[s] = { supplier: s, partCount: 0, criticalCount: 0, totalUsed: 0, lowStockCount: 0 };
+      map[s].partCount++;
+      if (p.critical) map[s].criticalCount++;
+      map[s].totalUsed += p.total_used;
+      map[s].lowStockCount += p.low_stock_count;
+    });
+    return Object.values(map).sort(function (a, b) { return b.totalUsed - a.totalUsed; });
+  }, [allParts]);
+  var untaggedPartCount = allParts.filter(function (p) { return !(p.supplier || "").trim(); }).length;
   var filtered = useMemo(function () {
     return allParts.filter(function (p) {
       var q = search.toLowerCase();
@@ -12026,7 +12733,36 @@ function GlobalSparePartsPage(_ref67) {
     }, s.v), /*#__PURE__*/React.createElement("div", {
       className: "stat-lbl"
     }, s.l));
-  })), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", { className: "card", style: { marginBottom: 16 } },
+    React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: "#0f2044", marginBottom: 4 } }, "\uD83C\uDFF7\uFE0F Tedarik\xE7i Performans\u0131"),
+    React.createElement("p", { style: { fontSize: 11, color: "#6b7fa3", marginBottom: 12 } },
+      "Hangi tedarik\xE7inin par\xE7as\u0131 ne kadar t\xFCketiliyor \u2014 sat\u0131n alma kararlar\u0131n\u0131 veriye dayand\u0131rmak i\xE7in. Par\xE7a d\xFczenlemede \"Tedarik\xE7i\" alan\u0131n\u0131 doldurdukc\xE7a burada birikir."),
+    bySupplier.length === 0
+      ? React.createElement("div", { style: { textAlign: "center", padding: 20, color: "#9aa5b4", fontSize: 12 } },
+          "Hen\xFCz hi\xE7bir par\xE7aya tedarik\xE7i girilmemi\u015F" + (untaggedPartCount > 0 ? " (" + untaggedPartCount + " par\xE7a bekliyor)." : "."))
+      : React.createElement("div", { className: "tbl-wrap" },
+          React.createElement("table", null,
+            React.createElement("thead", null, React.createElement("tr", null,
+              React.createElement("th", null, "Tedarik\xE7i"),
+              React.createElement("th", { style: { textAlign: "center" } }, "Par\xE7a Tipi"),
+              React.createElement("th", { style: { textAlign: "center" } }, "Kritik"),
+              React.createElement("th", { style: { textAlign: "center" } }, "D\xFC\u015F\xFCk Stok"),
+              React.createElement("th", { style: { textAlign: "center" } }, "Toplam T\xFCketim")
+            )),
+            React.createElement("tbody", null, bySupplier.map(function(s) {
+              return React.createElement("tr", { key: s.supplier },
+                React.createElement("td", null, React.createElement("strong", { style: { color: "#0f2044" } }, s.supplier)),
+                React.createElement("td", { style: { textAlign: "center" } }, s.partCount),
+                React.createElement("td", { style: { textAlign: "center" } }, s.criticalCount > 0 ? React.createElement("span", { className: "tag tag-red" }, s.criticalCount) : "\u2014"),
+                React.createElement("td", { style: { textAlign: "center", color: s.lowStockCount > 0 ? "#c62828" : "#9aa5b4" } }, s.lowStockCount || "\u2014"),
+                React.createElement("td", { style: { textAlign: "center", fontWeight: 700, color: "#e65100" } }, s.totalUsed)
+              );
+            })),
+            untaggedPartCount > 0 && React.createElement("caption", { style: { captionSide: "bottom", textAlign: "left", fontSize: 10, color: "#9aa5b4", padding: "8px 4px" } },
+              untaggedPartCount + " par\xE7ada tedarik\xE7i bilgisi eksik \u2014 par\xE7a d\xFczenlemeden ekleyebilirsiniz.")
+          )
+        )
+  ), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 10,
@@ -14791,7 +15527,8 @@ function AuditTrailPage(_ref77) {
     admin: "Admin",
     leader: "Lider",
     tech: "Teknisyen",
-    op: "Operatör"
+    op: "Operatör",
+    kalite: "Kalite"
   };
   return /*#__PURE__*/React.createElement("div", {
     className: "anim"
@@ -15155,6 +15892,29 @@ function SysAdminPage(_ref) {
     apiGet("/api/system/info").then(function(info){ if(info) setSysInfo(info); });
   },[]);
 
+  // Kalite onayı ayarları — varsayılan kapalı, admin devreye alana kadar
+  // mevcut kapanış akışında hiçbir değişiklik olmaz.
+  var _qs1=useState({enabled:false, trigger_fail_codes:[]}),_qs2=_slicedToArray(_qs1,2),qSettings=_qs2[0],setQSettings=_qs2[1];
+  var _qsSaving1=useState(false),_qsSaving2=_slicedToArray(_qsSaving1,2),qSaving=_qsSaving2[0],setQSaving=_qsSaving2[1];
+  useEffect(function(){
+    apiGet("/api/system/quality-settings").then(function(s){ if(s) setQSettings(s); });
+  },[]);
+  var saveQSettings = function(next) {
+    setQSaving(true);
+    fetch("/api/system/quality-settings", {
+      method: "PUT", headers: apiHeaders(), body: JSON.stringify(next)
+    }).then(function(r){ return r.json(); }).then(function(res){
+      setQSaving(false);
+      if (res.ok) { setQSettings({ enabled: res.enabled, trigger_fail_codes: res.trigger_fail_codes }); }
+      else { alert("❌ Kaydedilemedi: " + (res.error || "bilinmeyen hata")); }
+    }).catch(function(){ setQSaving(false); alert("❌ Sunucuya ulaşılamadı"); });
+  };
+  var toggleQFailCode = function(code) {
+    var cur = qSettings.trigger_fail_codes || [];
+    var next = cur.indexOf(code) >= 0 ? cur.filter(function(c){ return c !== code; }) : cur.concat([code]);
+    saveQSettings({ enabled: qSettings.enabled, trigger_fail_codes: next });
+  };
+
   var lsInfo = React.useMemo(function() {
     try {
       var total = 0, keys = [];
@@ -15412,6 +16172,45 @@ function SysAdminPage(_ref) {
         }, "⬇ Şablon İndir"),
         React.createElement("div", {style:{fontSize:11, color:"#9aa5b4"}},
           "Format: ITNBR | TRQTY | UPDDT")
+      )
+    ),
+
+    // ── KALİTE ONAYI AYARLARI ──
+    React.createElement("div", {className:"card", style:{marginBottom:16, borderLeft:"4px solid #ab47bc"}},
+      React.createElement("div", {className:"section-title", style:{marginBottom:8}}, "🧪 Kalite Onayı Ayarları"),
+      React.createElement("p", {style:{fontSize:12, color:"#6b7fa3", marginBottom:14}},
+        "Devreye alındığında, belirli iş emirlerinin kapanışı teknisyen/lider onayından sonra ayrıca kalite rolündeki bir kullanıcının onayını bekler. Modifikasyon işleri ve operatörün \"Kalite Sorunu\" işaretlediği arızalar her zaman kalite onayına düşer; aşağıda seçtiğiniz arıza tipleri de eklenir. Kapalıyken hiçbir işi etkilemez."),
+      React.createElement("div", {style:{display:"flex", alignItems:"center", gap:10, marginBottom:16}},
+        React.createElement("button", {
+          disabled: qSaving,
+          onClick: function(){ saveQSettings({ enabled: !qSettings.enabled, trigger_fail_codes: qSettings.trigger_fail_codes }); },
+          style:{
+            width:52, height:28, borderRadius:14, border:"none", cursor: qSaving?"not-allowed":"pointer",
+            background: qSettings.enabled ? "#1a6b3c" : "#ccc", position:"relative", transition:"background .2s"
+          }
+        }, React.createElement("span", {
+          style:{ position:"absolute", top:3, left: qSettings.enabled?27:3, width:22, height:22, borderRadius:"50%", background:"#fff", transition:"left .2s" }
+        })),
+        React.createElement("span", { style:{ fontSize:13, fontWeight:700, color: qSettings.enabled ? "#1a6b3c" : "#6b7fa3" } },
+          qSettings.enabled ? "AKTİF — kalite onayı devrede" : "PASİF — kalite onayı devre dışı")
+      ),
+      qSettings.enabled && React.createElement("div", null,
+        React.createElement("div", {style:{fontSize:12, fontWeight:700, color:"#2d3748", marginBottom:8}},
+          "Ayrıca bu arıza tiplerinde de kalite onayı istensin:"),
+        React.createElement("div", {style:{display:"flex", flexWrap:"wrap", gap:8}},
+          (typeof FAIL_CATS !== "undefined" ? FAIL_CATS : []).map(function(c){
+            var active = (qSettings.trigger_fail_codes || []).indexOf(c.c) >= 0;
+            return React.createElement("button", {
+              key: c.c, disabled: qSaving,
+              onClick: function(){ toggleQFailCode(c.c); },
+              style:{
+                padding:"6px 12px", borderRadius:20, fontSize:11, fontWeight:700, cursor: qSaving?"not-allowed":"pointer",
+                border: active ? "2px solid #ab47bc" : "1px solid #e0e5eb",
+                background: active ? "#f3e5f5" : "#fff", color: active ? "#7b1fa2" : "#4a5568"
+              }
+            }, (active ? "✓ " : "") + c.l);
+          })
+        )
       )
     ),
 
@@ -17082,13 +17881,26 @@ function ReportContent(_ref) {
       return { label: k, value: Math.round(costByMold[k]) };
     }).sort(function(a, b) { return b.value - a.value; }).slice(0, 10);
     var avgCost = costedCount > 0 ? totalCost / costedCount : 0;
+    var moldByIdForCost = {};
+    molds.forEach(function(m) { moldByIdForCost[m.id] = m; });
+    var totalProdLoss = 0, prodLossMoldCount = 0;
+    wos.forEach(function(w) {
+      if (!w.started_at || !w.closed_at) return;
+      var mm = moldByIdForCost[w.mold_id];
+      if (!mm || !mm.hourly_prod_value) return;
+      totalProdLoss += (_rptMin(w.started_at, w.closed_at) / 60) * mm.hourly_prod_value;
+      prodLossMoldCount++;
+    });
     return React.createElement("div", null,
       React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 16 } },
-        React.createElement(RptKPI, { ico: "💰", val: "₺" + totalCost.toLocaleString(), label: "Toplam Maliyet", color: "#7b1fa2" }),
+        React.createElement(RptKPI, { ico: "💰", val: "₺" + totalCost.toLocaleString(), label: "Toplam Maliyet (işçilik+parça)", color: "#7b1fa2" }),
         React.createElement(RptKPI, { ico: "📋", val: costedCount, label: "Maliyet Girilen İş", color: "#1565c0" }),
         React.createElement(RptKPI, { ico: "📊", val: "₺" + Math.round(avgCost).toLocaleString(), label: "Ort. İş Başı Maliyet", color: "#e65100" }),
-        React.createElement(RptKPI, { ico: "🏭", val: costData.length > 0 ? "₺" + costData[0].value.toLocaleString() : "—", label: "En Maliyetli Kalıp", sub: costData.length > 0 ? costData[0].label : "", color: "#c62828" })
+        React.createElement(RptKPI, { ico: "🏭", val: costData.length > 0 ? "₺" + costData[0].value.toLocaleString() : "—", label: "En Maliyetli Kalıp", sub: costData.length > 0 ? costData[0].label : "", color: "#c62828" }),
+        React.createElement(RptKPI, { ico: "📉", val: totalProdLoss > 0 ? "₺" + Math.round(totalProdLoss).toLocaleString() : "—", label: "Tahmini Üretim Kaybı (duruş)", sub: prodLossMoldCount > 0 ? prodLossMoldCount + " iş emrinden hesaplandı" : "Kalıplara ₺/saat üretim değeri girilmemiş", color: "#c62828" })
       ),
+      totalProdLoss > 0 && React.createElement("div", { className: "alert-box alert-warning", style: { marginBottom: 16, fontSize: 12 } },
+        "İşçilik+parça maliyeti (₺" + totalCost.toLocaleString() + ") yalnızca doğrudan bakım harcamasıdır. Duruş süresince kaybedilen tahmini üretim değeri (₺" + Math.round(totalProdLoss).toLocaleString() + ") çoğu zaman bundan kat kat büyüktür ve gerçek maliyeti gösterir."),
       costData.length > 0
         ? React.createElement("div", { className: "card" },
             React.createElement("h3", { style: { fontSize: 14, fontWeight: 800, marginBottom: 6, color: "#0f2044" } }, "💰 En Maliyetli 10 Kalıp"),

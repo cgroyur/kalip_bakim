@@ -41,6 +41,7 @@ const { WebSocketServer } = require("ws");
 const {
   validate, loginSchema, changePasswordSchema, createUserSchema, updateUserSchema,
   workOrderSchema, tvClaimSchema, auditSchema, systemResetSchema, resetSeedSchema, stateSchema,
+  attachmentSchema, qualitySettingsSchema,
 } = require("./validation");
 
 const app  = express();
@@ -122,7 +123,7 @@ function addAudit(userId, userName, role, action, entityType, entityId, detail) 
 // Sadece "Depoda" durumundaki kalıplar için çalışır — kullanıcının elle
 // "Transfer"/"Hurda" gibi bilinçli olarak verdiği bir durumun üzerine yazmaz
 // ("tereddütlü/süreci başlamamış" kalıplar için, bkz. kullanıcı talebi).
-async function syncMoldStatusForWO(wo, prevStatus) {
+async function syncMoldStatusForWO(wo, prevStatus, actor) {
   if (!wo.mold_id) return;
   const molds = await store.getMolds();
   const mold = molds.find(m => m.id === wo.mold_id);
@@ -136,6 +137,10 @@ async function syncMoldStatusForWO(wo, prevStatus) {
     mold._auto_bakimda = true;
     await store.upsertMold(mold);
     broadcast({ type: "molds_replaced", molds });
+    if (actor) {
+      await addAudit(actor.id, actor.name, actor.role, "Kalıp Durumu Otomatik Değişti", "mold", mold.id,
+        `${wo.id} iş emri başladığı için Depoda → Bakımda (otomatik)`);
+    }
   } else if (closedNow && mold._auto_bakimda) {
     const allWos = await store.getWorkOrders();
     const stillWorking = allWos.some(w => w.mold_id === wo.mold_id && w.id !== wo.id && w.status === "DEVAM_EDİYOR");
@@ -144,8 +149,43 @@ async function syncMoldStatusForWO(wo, prevStatus) {
       delete mold._auto_bakimda;
       await store.upsertMold(mold);
       broadcast({ type: "molds_replaced", molds });
+      if (actor) {
+        await addAudit(actor.id, actor.name, actor.role, "Kalıp Durumu Otomatik Değişti", "mold", mold.id,
+          `${wo.id} iş emri kapandığı için Bakımda → Depoda (otomatik)`);
+      }
     }
   }
+}
+
+// Bir kalıp+arıza tipi kombinasyonu, kapatılan bu iş emri dahil son 30 günde
+// 3. kez tekrarlıyorsa ve bu iş emrinde RCA (kök neden) girilmemişse "kronik,
+// RCA'sız" kabul edilir — frontend'deki detectRecurringFailures() ile aynı
+// 30 günlük pencere mantığı, kapanış anında sunucu tarafında da uygulanır.
+function isChronicWithoutRCA(cw, allWos) {
+  if (!cw.mold_id || !cw.fail_code || cw.rca_cause) return false;
+  const refTime = new Date(String(cw.created_at || "").replace(" ", "T")).getTime();
+  if (isNaN(refTime)) return false;
+  const cutoff = refTime - 30 * 86400000;
+  const sameGroup = allWos.filter(w =>
+    w.mold_id === cw.mold_id && w.fail_code === cw.fail_code && w.type === "ARIZ" && w.id !== cw.id);
+  const withinWindow = sameGroup.filter(w => {
+    const t = new Date(String(w.created_at || "").replace(" ", "T")).getTime();
+    return !isNaN(t) && t >= cutoff && t <= refTime;
+  });
+  return withinWindow.length + 1 >= 3; // +1: kapanan iş emrinin kendisi
+}
+
+// Kalite onayı gerekiyor mu? Ayar kapalıysa hiçbir zaman gerekmez (varsayılan
+// davranış korunur). Açıksa üç bağımsız tetikleyiciden biri yeterli:
+// modifikasyon işleri her zaman, operatörün "Kalite Sorunu" işaretlediği
+// arızalar her zaman, ve admin'in ayrıca seçtiği arıza tipleri.
+function isQualityApprovalRequired(cw, qualitySettings) {
+  if (!qualitySettings || !qualitySettings.enabled) return false;
+  if (cw.type === "MODİF") return true;
+  if (cw.impact === "Kalite Sorunu") return true;
+  const triggerCodes = qualitySettings.trigger_fail_codes || [];
+  if (cw.fail_code && triggerCodes.includes(cw.fail_code)) return true;
+  return false;
 }
 
 // ── GERÇEK ZAMANLI SENKRONİZASYON (WebSocket) ──
@@ -408,13 +448,54 @@ app.post("/api/state", (req, res, next) => {
 
   // ── WO yazma: satır bazlı upsert, updated_at çakışması db/shared.js'te çözülür ──
   const deletedIds = new Set(deleted_wo_ids || []);
+  const wosSnapshotForChronicCheck = await store.getWorkOrders();
+  const qualitySettingsSnapshot = await store.getQualitySettings();
   for (const cw of (incomingWos || [])) {
     if (deletedIds.has(cw.id)) continue; // istemci bilinçli silmiş, aşağıda silinecek
     const prevWo = await store.getWorkOrderById(cw.id);
+    const closingNow = cw.status === "KAPATILDI" && (!prevWo || prevWo.status !== "KAPATILDI");
+    // quality_approved yalnızca kalite/admin rolünden gelen isteklerde geçerli
+    // sayılır — başka bir rol bu alanı gövdeye eklese bile sunucu, mevcut
+    // sunucu-taraflı değeri korur (kapanış kapısını atlatmayı engeller).
+    if (cw.quality_approved !== undefined && !["kalite", "admin"].includes(req.user.role)) {
+      cw.quality_approved = prevWo ? !!prevWo.quality_approved : false;
+    }
+    // ── Bağımsız doğrulama kuralı: KRİTİK öncelikli bir işi, işi yapan teknisyen
+    // tek başına KAPATILDI'ya çekemez — sunucu bu tek alanı sessizce "TAMAMLANDI"ya
+    // düşürür (leader/admin'in "Doğrulama Bekleyen İşler" ekranından onaylaması
+    // gerekir). admin/leader için ya da kritik olmayan işlerde davranış değişmez.
+    if (closingNow && cw.priority === "KRİTİK" && req.user.role === "tech") {
+      cw.status = "TAMAMLANDI";
+      cw.closed_at = null;
+    }
+    // ── Kronik arıza kuralı: aynı kalıp+arıza tipi son 30 günde 3. kez
+    // kapatılıyorsa ve RCA girilmemişse, kim kapatırsa kapatsın "TAMAMLANDI"
+    // durumuna düşürülür — RCA eklenip yeniden kapatılana kadar kronik döngü
+    // sessizce kapanamaz.
+    else if (closingNow && isChronicWithoutRCA(cw, wosSnapshotForChronicCheck)) {
+      cw.status = "TAMAMLANDI";
+      cw.closed_at = null;
+      await addAudit(req.user.id, req.user.name, req.user.role, "Kronik Arıza — RCA Gerekli", "wo", cw.id,
+        `${cw.mold_id} / ${cw.fail_code}: son 30 günde 3. tekrar, RCA eksik olduğu için kapatma engellendi`);
+    }
+    // ── Kalite onayı kapısı: yukarıdaki kapılardan sonra hâlâ KAPATILDI'ya
+    // geçmeye çalışıyorsa (yani KRİTİK/kronik kapıları tetiklenmediyse) ve bu
+    // iş kalite onayı gerektiriyorsa (modifikasyon, "Kalite Sorunu" etkisi
+    // veya admin'in seçtiği arıza tipleri), kalite onayı verilmiş olmadıkça
+    // "KALITE_BEKLIYOR" durumuna düşürülür. Ayar kapalıyken hiçbir etkisi yok.
+    if (cw.status === "KAPATILDI" && !cw.quality_approved &&
+        isQualityApprovalRequired(cw, qualitySettingsSnapshot)) {
+      cw.status = "KALITE_BEKLIYOR";
+      cw.closed_at = null;
+      if (closingNow) {
+        await addAudit(req.user.id, req.user.name, req.user.role, "Kalite Onayı Bekliyor", "wo", cw.id,
+          `${cw.mold_id}: kalite onayı gerekiyor (tip=${cw.type}, etki=${cw.impact || "—"}, arıza=${cw.fail_code || "—"})`);
+      }
+    }
     const applied = await store.upsertWorkOrder(cw);
     if (applied) {
       broadcast({ type: "wo_updated", wo: cw });
-      await syncMoldStatusForWO(cw, prevWo ? prevWo.status : null);
+      await syncMoldStatusForWO(cw, prevWo ? prevWo.status : null, req.user);
     }
   }
   for (const id of deletedIds) {
@@ -643,7 +724,7 @@ app.post("/api/workorders", auth, validate(workOrderSchema), async (req, res) =>
 
   await store.upsertWorkOrder(wo);
   broadcast({ type: "wo_updated", wo });
-  await syncMoldStatusForWO(wo, null);
+  await syncMoldStatusForWO(wo, null, req.user);
 
   // Audit log
   await addAudit(req.user.id, req.user.name, req.user.role, "Arıza Bildirimi", "wo", wo.id,
@@ -668,10 +749,71 @@ app.post("/api/tv/claim", auth, validate(tvClaimSchema), async (req, res) => {
   wo.updated_at = new Date().toISOString();
   await store.upsertWorkOrder(wo);
   broadcast({ type: "wo_updated", wo });
-  await syncMoldStatusForWO(wo, prevStatus);
+  await syncMoldStatusForWO(wo, prevStatus, req.user);
   await addAudit(req.user.id, req.user.name, req.user.role, "İş Üstlenildi (TV)", "wo", wo_id,
     req.user.name + " " + wo_id + " iş emrini TV modundan üstlendi");
   res.json({ ok: true, wo_id, assigned: req.user.name });
+});
+
+// ── DOKÜMAN EKLERİ ── (teknik çizim, üretici manueli, onarım fotoğrafı vb.)
+// Kalıp/iş emri kayıtlarından ayrı tutulur, GET /api/state'e dahil edilmez —
+// sadece ilgili kayıt açıldığında ayrıca (isteğe bağlı) çekilir.
+app.get("/api/attachments", auth, async (req, res) => {
+  const { entity_type, entity_id } = req.query;
+  if (!entity_type || !entity_id) return res.status(400).json({ error: "entity_type ve entity_id gerekli" });
+  const rows = await store.getAttachmentsMeta(String(entity_type), String(entity_id));
+  res.json(rows);
+});
+
+app.post("/api/attachments", auth, validate(attachmentSchema), async (req, res) => {
+  const { entity_type, entity_id, filename, mime_type, data_base64 } = req.body;
+  const sizeBytes = Math.round(data_base64.length * 3 / 4);
+  const att = {
+    id: "ATT-" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase(),
+    entity_type, entity_id, filename, mime_type: mime_type || "application/octet-stream",
+    size_bytes: sizeBytes, data_base64,
+    uploaded_by: req.user.id, uploaded_by_name: req.user.name, uploaded_at: nowStrTR(),
+  };
+  await store.saveAttachment(att);
+  await addAudit(req.user.id, req.user.name, req.user.role, "Dosya Eklendi", entity_type, entity_id,
+    `${filename} (${Math.round(sizeBytes/1024)} KB) eklendi`);
+  const { data_base64: _drop, ...meta } = att;
+  res.json({ ok: true, attachment: meta });
+});
+
+app.get("/api/attachments/:id/content", auth, async (req, res) => {
+  const att = await store.getAttachmentById(req.params.id);
+  if (!att) return res.status(404).json({ error: "Dosya bulunamadı" });
+  res.json({ filename: att.filename, mime_type: att.mime_type, data_base64: att.data_base64 });
+});
+
+app.delete("/api/attachments/:id", auth, async (req, res) => {
+  if (!["admin", "leader"].includes(req.user.role)) return res.status(403).json({ error: "Yetkisiz" });
+  const att = await store.getAttachmentById(req.params.id);
+  if (!att) return res.status(404).json({ error: "Dosya bulunamadı" });
+  await store.deleteAttachment(req.params.id);
+  await addAudit(req.user.id, req.user.name, req.user.role, "Dosya Silindi", att.entity_type, att.entity_id, att.filename);
+  res.json({ ok: true });
+});
+
+// Kalite onayı ayarları — varsayılan kapalı (enabled:false). Devreye alınana
+// kadar iş emri kapanış akışında hiçbir değişiklik olmaz. GET herkese açık
+// (frontend'in gate durumunu bilmesi gerekir), PUT sadece admin.
+app.get("/api/system/quality-settings", auth, async (req, res) => {
+  const s = await store.getQualitySettings();
+  res.json({ enabled: !!s.enabled, trigger_fail_codes: s.trigger_fail_codes || [] });
+});
+
+app.put("/api/system/quality-settings", auth, adminOnly, validate(qualitySettingsSchema), async (req, res) => {
+  const current = await store.getQualitySettings();
+  const next = {
+    enabled: req.body.enabled !== undefined ? req.body.enabled : !!current.enabled,
+    trigger_fail_codes: req.body.trigger_fail_codes !== undefined ? req.body.trigger_fail_codes : (current.trigger_fail_codes || []),
+  };
+  await store.saveQualitySettings(next);
+  await addAudit(req.user.id, req.user.name, req.user.role, "Kalite Onayı Ayarları Değiştirildi", "system", null,
+    `enabled=${next.enabled}, tetikleyici arıza tipleri: ${next.trigger_fail_codes.join(", ") || "yok"}`);
+  res.json({ ok: true, ...next });
 });
 
 app.get("/api/system/info", auth, adminOnly, async (req, res) => {

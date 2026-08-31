@@ -15,7 +15,7 @@ function validate(schema) {
   };
 }
 
-const ROLE_ENUM = z.enum(["admin", "leader", "tech", "op"]);
+const ROLE_ENUM = z.enum(["admin", "leader", "tech", "op", "kalite"]);
 
 const loginSchema = z.object({
   username: z.string().min(1, "Kullanıcı adı gerekli"),
@@ -80,6 +80,25 @@ const stateSchema = z.object({
   deleted_wo_ids: z.array(z.union([z.string(), z.number()])).optional(),
 }).passthrough();
 
+// Doküman ekleri (teknik çizim, üretici manueli, onarım fotoğrafı vb.). Dosya
+// içeriği base64 olarak gönderilir; ~12M karakter sınırı ~9MB'lık bir dosyaya
+// karşılık gelir — express.json'daki 25mb gövde limitinin altında rahat kalır.
+const attachmentSchema = z.object({
+  entity_type: z.enum(["mold", "wo"]),
+  entity_id: z.string().min(1),
+  filename: z.string().min(1).max(200),
+  mime_type: z.string().max(120).optional(),
+  data_base64: z.string().min(1).max(12_000_000, "Dosya çok büyük (maks. ~9MB)"),
+});
+
+// Kalite onayı sistem ayarları — hangi durumlarda bir iş emrinin kapanışının
+// kalite rolü tarafından onaylanması gerektiğini belirler. Varsayılan kapalı;
+// admin devreye alana kadar mevcut kapanış akışında hiçbir değişiklik olmaz.
+const qualitySettingsSchema = z.object({
+  enabled: z.boolean().optional(),
+  trigger_fail_codes: z.array(z.string()).optional(),
+});
+
 module.exports = {
   validate,
   loginSchema,
@@ -92,4 +111,6 @@ module.exports = {
   systemResetSchema,
   resetSeedSchema,
   stateSchema,
+  attachmentSchema,
+  qualitySettingsSchema,
 };

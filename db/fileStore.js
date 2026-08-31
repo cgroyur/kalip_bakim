@@ -13,6 +13,8 @@ function createFileStore(dataDir) {
   const moldsFile = path.join(dataDir, "molds.json");
   const wosFile = path.join(dataDir, "work_orders.json");
   const extraFile = path.join(dataDir, "state_extra.json");
+  const attachmentsFile = path.join(dataDir, "attachments.json");
+  const qualitySettingsFile = path.join(dataDir, "quality_settings.json");
   const legacyFile = path.join(dataDir, "cmms_data.json");
 
   function readJson(file, fallback) {
@@ -31,6 +33,8 @@ function createFileStore(dataDir) {
   let molds = [];
   let wos = [];
   let stateExtra = {};
+  let attachments = [];
+  let qualitySettings = { enabled: false, trigger_fail_codes: [] };
 
   function migrateLegacyBlobIfNeeded() {
     const alreadyMigrated = fs.existsSync(usersFile) || fs.existsSync(moldsFile) || fs.existsSync(wosFile);
@@ -59,6 +63,8 @@ function createFileStore(dataDir) {
       molds = readJson(moldsFile, []);
       wos = readJson(wosFile, []);
       stateExtra = readJson(extraFile, {});
+      attachments = readJson(attachmentsFile, []);
+      qualitySettings = readJson(qualitySettingsFile, { enabled: false, trigger_fail_codes: [] });
       migrateLegacyBlobIfNeeded();
     },
 
@@ -118,10 +124,25 @@ function createFileStore(dataDir) {
     async getStateExtra() { return stateExtra; },
     async saveStateExtra(next) { stateExtra = next; writeJson(extraFile, stateExtra); },
 
+    // Doküman ekleri — meta listesi data_base64'ü dönmez (liste hafif kalsın).
+    async saveAttachment(att) { attachments.push(att); writeJson(attachmentsFile, attachments); },
+    async getAttachmentsMeta(entityType, entityId) {
+      return attachments
+        .filter((a) => a.entity_type === entityType && a.entity_id === entityId)
+        .map(({ data_base64, ...meta }) => meta)
+        .sort((a, b) => String(b.uploaded_at || "").localeCompare(String(a.uploaded_at || "")));
+    },
+    async getAttachmentById(id) { return attachments.find((a) => a.id === id) || null; },
+    async deleteAttachment(id) { attachments = attachments.filter((a) => a.id !== id); writeJson(attachmentsFile, attachments); },
+
+    // Kalite onayı ayarları
+    async getQualitySettings() { return qualitySettings; },
+    async saveQualitySettings(next) { qualitySettings = next; writeJson(qualitySettingsFile, qualitySettings); },
+
     async getStorageInfo() {
       let sizeKb = 0;
       try {
-        const files = [usersFile, auditFile, moldsFile, wosFile, extraFile];
+        const files = [usersFile, auditFile, moldsFile, wosFile, extraFile, attachmentsFile, qualitySettingsFile];
         sizeKb = Math.round(files.reduce((s, f) => s + (fs.existsSync(f) ? fs.statSync(f).size : 0), 0) / 1024);
       } catch (e) { /* boyut bilgisi kritik değil */ }
       return { kind: "disk", sizeKb, path: dataDir };
