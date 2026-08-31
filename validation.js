@@ -42,6 +42,9 @@ const updateUserSchema = z.object({
   username: z.string().min(1).optional(),
   password: z.string().min(1).optional(),
   supplier_name: z.string().max(120).optional(),
+  // Kişi bazlı sayfa erişim listesi (Yetki Yönetimi). null = rol varsayılanına
+  // dön. undefined (alan hiç gönderilmezse) mevcut değeri korur.
+  custom_pages: z.array(z.string().max(60)).max(60).nullable().optional(),
 });
 
 // İş emri (work order) alan seti çok geniş (RCA analizi, maliyet, tip-özel alanlar vb.)
@@ -107,9 +110,14 @@ const supplierPmCreateSchema = z.object({
 });
 const supplierPmCompleteSchema = z.object({
   note: z.string().max(2000).optional(),
+  // İç PM checklist'iyle aynı madde seti — "kod - görev" etiketleri (bkz. PM_CHECKLIST).
+  checklist_done: z.array(z.string().max(300)).max(100).optional(),
 });
 
 // Tedarikçi arıza bildirimi + teklif — kırılımlı fiyat (işlem + fiyat) satırları.
+// teklif_items boş bırakılabilir: tedarikçi teklifsiz, sadece bilgilendirme
+// amaçlı bir arıza bildirimi de yapabilir (bkz. supplier ariz route'u — bu
+// durumda BILDIRIM_BEKLIYOR durumuna düşer, TEKLIF_BEKLIYOR'a değil).
 const teklifItemSchema = z.object({
   op: z.string().min(1).max(200),
   price: z.number().nonnegative(),
@@ -118,7 +126,7 @@ const supplierArizCreateSchema = z.object({
   mold_id: z.string().min(1, "Kalıp zorunlu"),
   cavity_no: z.string().max(50).optional(),
   description: z.string().min(1, "Açıklama zorunlu").max(4000),
-  teklif_items: z.array(teklifItemSchema).min(1, "En az bir işlem/fiyat satırı gerekli"),
+  teklif_items: z.array(teklifItemSchema).max(50).optional(),
 });
 const supplierSampleSentSchema = z.object({}).passthrough();
 const supplierArizCompleteSchema = z.object({

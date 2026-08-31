@@ -6,44 +6,168 @@
 <title>CMMS v15 — TV Dashboard</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f1e38;color:#fff;overflow-x:hidden}
-.top{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;flex-wrap:wrap;gap:8px}
-.grid{display:grid;gap:12px;padding:0 20px;margin-bottom:16px}
-.kpi-grid{grid-template-columns:repeat(4,1fr)}
-.main-grid{grid-template-columns:1fr 1fr 1fr}
-@media(max-width:1000px){.kpi-grid{grid-template-columns:repeat(2,1fr)}.main-grid{grid-template-columns:1fr}}
-.card{background:#152642;border-radius:14px;padding:18px;max-height:calc(100vh - 260px);overflow-y:auto}
-.kpi{background:#1a2d4d;border-radius:16px;padding:20px 14px;text-align:center;border:1px solid #2a4a7a}
-.kpi .ico{font-size:38px}.kpi .val{font-size:36px;font-weight:900;line-height:1;margin:4px 0}.kpi .lbl{font-size:10px;color:#7fa8d4;font-weight:600}
-.wo-row{padding:11px 12px;border-bottom:1px solid rgba(255,255,255,.1);display:flex;justify-content:space-between;align-items:center;gap:8px}
-.wo-row:nth-child(even){background:rgba(255,255,255,.02)}
-.btn-claim{background:linear-gradient(135deg,#ff6d00,#e65100);color:#fff;border:none;border-radius:10px;padding:10px 20px;font-size:15px;font-weight:800;cursor:pointer;white-space:nowrap;transition:transform .15s;margin-top:6px}
-.btn-claim:hover{transform:scale(1.05)}
-.badge{display:inline-block;padding:4px 10px;border-radius:6px;font-size:13px;font-weight:800}
-.p-KRİTİK,.p-CRITICAL{color:#ff5252;background:rgba(255,82,82,.15)}.p-YÜKSEK,.p-HIGH{color:#ff9800;background:rgba(255,152,0,.15)}
-.p-NORMAL{color:#64b5f6;background:rgba(100,181,246,.15)}.p-DÜŞÜK,.p-LOW{color:#78909c;background:rgba(120,144,156,.15)}
-.progress-row{background:#1e3556;border-radius:10px;padding:14px 16px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;border-left:5px solid #1565c0}
-/* Claim Modal */
-.overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(10,22,40,.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:9999}
-.claim-card{background:linear-gradient(145deg,#111e33,#0d1a2e);border:1px solid #1a3a6b;border-radius:20px;padding:32px 28px;width:100%;max-width:340px;box-shadow:0 24px 80px rgba(0,0,0,.6)}
-.claim-card h2{font-size:18px;font-weight:800;margin:0 0 4px;color:#fff}
-.claim-card .sub{font-size:11px;color:#4a6a8a;margin-bottom:20px}
-.claim-card label{display:block;font-size:10px;font-weight:700;color:#7fa8d4;margin-bottom:5px;text-transform:uppercase;letter-spacing:.5px}
-.claim-card input{width:100%;padding:11px 14px;background:#0a1628;border:1.5px solid #1a3a6b;border-radius:10px;color:#fff;font-size:13px;outline:none;margin-bottom:14px;transition:border .2s}
-.claim-card input:focus{border-color:#1565c0}
-.claim-card input::placeholder{color:#2a4a6b}
-.claim-card .err{background:rgba(198,40,40,.2);border:1px solid #c62828;color:#ff8a80;padding:8px 12px;border-radius:8px;font-size:11px;margin-bottom:14px;font-weight:600}
-.claim-card .wo-info{background:rgba(255,255,255,.05);border-radius:10px;padding:10px 14px;margin-bottom:20px;border:1px solid rgba(255,255,255,.08)}
-.claim-card .wo-info .id{font-weight:800;font-size:14px;color:#64b5f6}.claim-card .wo-info .det{font-size:10px;color:#4a6a8a;margin-top:2px}
-.claim-btns{display:flex;gap:8px}
-.claim-btns button{flex:1;padding:12px;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s}
-.claim-btns .cancel{background:rgba(255,255,255,.08);color:#7fa8d4}.claim-btns .cancel:hover{background:rgba(255,255,255,.15)}
-.claim-btns .submit{background:linear-gradient(135deg,#e65100,#bf360c);color:#fff}.claim-btns .submit:hover{background:#e65100}
+
+/* ── Çözünürlük-uyarlamalı ölçek sistemi ──
+   Kök font-size hem genişliğe hem yüksekliğe bağlı (vw+vh) hesaplanır — bu
+   sayede pano 1366×768'lik küçük bir monitörde de, 4K bir duvar TV'sinde de
+   aynı ORANLARLA büyür/küçülür; tek bir eksene (sadece vw ya da sadece vh)
+   bağlı kalsaydı geniş/dar veya kısa/uzun ekranlarda oranlar bozulurdu.
+   Tüm boyutlar (padding, font, radius) aşağıda rem cinsinden — kökü
+   değiştirmek panonun tamamını orantılı ölçekler. */
+html{ font-size:clamp(12.5px, 0.56vw + 0.56vh, 19px); height:100% }
+body{
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:#0b1830; color:#eef2f8; height:100%; overflow:hidden;
+  display:flex; flex-direction:column;
+}
+
+/* ── Üst bar ── */
+.top{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:.9rem 1.3rem; flex:0 0 auto; flex-wrap:wrap; gap:.5rem;
+  border-bottom:1px solid rgba(255,255,255,.08);
+}
+.top h1{ font-size:1.5rem; font-weight:800; letter-spacing:-.01em }
+.top .meta{ font-size:.8rem; color:#8ba3c4; margin-top:.15rem; font-weight:600 }
+.top-actions{ display:flex; gap:.5rem; align-items:center }
+.top-actions a, .top-actions button{
+  display:inline-flex; align-items:center; gap:.35rem;
+  background:rgba(255,255,255,.06); color:#c7d6ea; border:1px solid rgba(255,255,255,.12);
+  border-radius:.4rem; padding:.4rem .8rem; font-size:.68rem; font-weight:700;
+  letter-spacing:.02em; cursor:pointer; text-decoration:none; transition:background .15s;
+}
+.top-actions a:hover, .top-actions button:hover{ background:rgba(255,255,255,.12) }
+.top-actions a{ color:#8fd4a8; border-color:rgba(143,212,168,.3) }
+
+/* ── Grid iskeleti — yükseklik hesaplaması artık sabit piksel değil,
+   flexbox'a bırakılıyor: KPI ve başlık ne kadar yer kaparsa kapsın, orta
+   satır kalanı doldurur ve panolar KENDİ İÇİNDE kayar. Bu, çözünürlükten
+   bağımsız "her zaman tek ekrana sığar" davranışının temelidir. */
+.grid{ display:grid; gap:.7rem; padding:0 1.3rem; flex:0 0 auto }
+.kpi-grid{ grid-template-columns:repeat(4,1fr); margin:.7rem 0 }
+.main-grid{ grid-template-columns:1.15fr 1fr 1.15fr; flex:1 1 auto; min-height:0; padding-bottom:1.1rem }
+@media(max-width:1100px){ .kpi-grid{grid-template-columns:repeat(2,1fr)} .main-grid{grid-template-columns:1fr} }
+
+.card{
+  background:#101f3a; border:1px solid rgba(255,255,255,.07); border-radius:.7rem;
+  padding:.9rem 1rem; overflow-y:auto; min-height:0;
+  display:flex; flex-direction:column;
+}
+.card::-webkit-scrollbar{ width:8px }
+.card::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.15); border-radius:4px }
+
+.panel-head{
+  display:flex; align-items:center; justify-content:space-between; gap:.5rem;
+  padding-bottom:.6rem; margin-bottom:.5rem; border-bottom:1px solid rgba(255,255,255,.08);
+  flex:0 0 auto;
+}
+.panel-head .t{ font-size:.92rem; font-weight:800; color:#dce6f5; display:flex; align-items:center; gap:.4rem }
+.panel-head .n{ font-family:ui-monospace,'SF Mono',Menlo,monospace; font-size:.78rem; font-weight:700; color:#6f88ab;
+  background:rgba(255,255,255,.05); border-radius:.3rem; padding:.1rem .45rem }
+.panel-pool{ border-top:.16rem solid #c9701f }
+.panel-progress{ border-top:.16rem solid #2f6fb8 }
+
+/* ── KPI kartları ── */
+.kpi{
+  background:#101f3a; border-radius:.65rem; padding:.75rem .6rem; text-align:center;
+  border:1px solid rgba(255,255,255,.08); display:flex; flex-direction:column; align-items:center; gap:.15rem;
+}
+.kpi .ico{ font-size:1.35rem; opacity:.9 }
+.kpi .val{ font-size:1.7rem; font-weight:900; line-height:1; font-variant-numeric:tabular-nums }
+.kpi .lbl{ font-size:.62rem; color:#7f93b0; font-weight:700; letter-spacing:.05em; text-transform:uppercase }
+
+/* ── Havuz sütunları (Arızalar / Planlı Bakım) ── */
+.pool-cols{ display:flex; gap:.8rem; flex:1 1 auto; min-height:0 }
+.pool-col{ flex:1; min-width:0; display:flex; flex-direction:column; min-height:0 }
+.pool-col-head{
+  font-size:.68rem; font-weight:800; letter-spacing:.04em; text-transform:uppercase;
+  margin-bottom:.4rem; padding-bottom:.3rem; flex:0 0 auto;
+  display:flex; align-items:center; gap:.3rem; border-bottom:1px dashed rgba(255,255,255,.1);
+}
+.pool-col-list{ overflow-y:auto; min-height:0 }
+.pool-col-list::-webkit-scrollbar{ width:6px }
+.pool-col-list::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.12); border-radius:3px }
+
+/* ── Kompakt havuz satırı — kalıp kodu en baskın eleman ── */
+.ticket{
+  background:#152847; border:1px solid rgba(255,255,255,.07); border-left:.2rem solid #2a4a7a;
+  border-radius:.4rem; padding:.4rem .55rem; margin-bottom:.4rem;
+}
+.ticket.pr-KRİTİK,.ticket.pr-CRITICAL{ border-left-color:#e0524a }
+.ticket.pr-YÜKSEK,.ticket.pr-HIGH{ border-left-color:#d9720f }
+.ticket-row1{ display:flex; align-items:baseline; gap:.45rem; flex-wrap:nowrap }
+.ticket-mold{ font-size:1.2rem; font-weight:900; color:#fff; letter-spacing:-.01em; white-space:nowrap; flex:0 0 auto }
+.ticket-meta{ font-size:.64rem; color:#7f93b0; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:2.2rem; flex:0 1 auto }
+.ticket-meta b{ color:#9fb3cc; font-weight:700 }
+.ticket-spacer{ flex:1 }
+.ticket-row2{ display:flex; align-items:center; justify-content:space-between; gap:.5rem; margin-top:.25rem }
+.ticket-desc{
+  font-size:.72rem; color:#a9bdd8; line-height:1.3; flex:1; min-width:0;
+  display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden;
+}
+.badge{
+  display:inline-block; padding:.14rem .45rem; border-radius:.3rem; font-size:.62rem;
+  font-weight:800; letter-spacing:.03em; text-transform:uppercase; flex:0 0 auto; white-space:nowrap;
+}
+.p-KRİTİK,.p-CRITICAL{color:#ff8a80;background:rgba(224,82,74,.18)}
+.p-YÜKSEK,.p-HIGH{color:#ffb84d;background:rgba(217,114,15,.18)}
+.p-NORMAL{color:#7fb4f0;background:rgba(47,111,184,.18)}
+.p-DÜŞÜK,.p-LOW{color:#9db0c4;background:rgba(120,144,156,.15)}
+
+.btn-claim{
+  background:#c9701f; color:#fff; border:none; border-radius:.35rem; padding:.28rem .7rem;
+  font-size:.66rem; font-weight:800; letter-spacing:.02em; cursor:pointer; white-space:nowrap;
+  transition:background .15s; flex:0 0 auto;
+}
+.btn-claim:hover{ background:#e08228 }
+
+/* ── Devam Eden / Tüm Açık İşler satırları ── */
+.wlist{ overflow-y:auto; min-height:0 }
+.wrow{
+  padding:.5rem .1rem; border-bottom:1px solid rgba(255,255,255,.06);
+  display:flex; justify-content:space-between; align-items:center; gap:.6rem;
+}
+.wrow:last-child{ border-bottom:none }
+.wrow-main{ min-width:0; flex:1 }
+.wrow-top{ display:flex; align-items:baseline; gap:.4rem }
+.wrow-mold{ font-size:1.1rem; font-weight:900; color:#fff }
+.wrow-id{ font-family:ui-monospace,'SF Mono',Menlo,monospace; font-size:.6rem; color:#5f7897; font-weight:700 }
+.wrow-desc{
+  font-size:.72rem; color:#8ba3c4; margin-top:.15rem; font-weight:500;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.wrow-side{ text-align:right; flex:0 0 auto; font-size:.72rem; font-weight:700 }
+.wrow-time{ font-size:.62rem; color:#5f7897; margin-top:.2rem; font-variant-numeric:tabular-nums }
+
+.progress-row{
+  background:#152847; border-radius:.5rem; padding:.6rem .75rem; margin-bottom:.45rem;
+  border-left:.2rem solid #2f6fb8; display:flex; justify-content:space-between; align-items:center; gap:.6rem;
+}
+
+.empty{ color:#5f7897; text-align:center; padding:1.6rem 0; font-size:.85rem; font-weight:600 }
+
+/* ── Claim Modal ── */
+.overlay{position:fixed;inset:0;background:rgba(8,16,30,.88);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:9999}
+.claim-card{background:#101f3a;border:1px solid rgba(255,255,255,.1);border-radius:1rem;padding:1.6rem 1.4rem;width:100%;max-width:22rem;box-shadow:0 1.5rem 4rem rgba(0,0,0,.5)}
+.claim-card h2{font-size:1.05rem;font-weight:800;margin:0 0 .2rem;color:#fff}
+.claim-card .sub{font-size:.68rem;color:#5f7897;margin-bottom:1.1rem}
+.claim-card label{display:block;font-size:.62rem;font-weight:700;color:#8ba3c4;margin-bottom:.3rem;text-transform:uppercase;letter-spacing:.04em}
+.claim-card input{width:100%;padding:.6rem .8rem;background:#0a1628;border:1px solid rgba(255,255,255,.15);border-radius:.5rem;color:#fff;font-size:.8rem;outline:none;margin-bottom:.8rem;transition:border .2s}
+.claim-card input:focus{border-color:#2f6fb8}
+.claim-card input::placeholder{color:#3d5474}
+.claim-card .err{background:rgba(224,82,74,.18);border:1px solid rgba(224,82,74,.5);color:#ff8a80;padding:.5rem .7rem;border-radius:.4rem;font-size:.66rem;margin-bottom:.8rem;font-weight:600}
+.claim-card .wo-info{background:rgba(255,255,255,.04);border-radius:.5rem;padding:.6rem .8rem;margin-bottom:1.1rem;border:1px solid rgba(255,255,255,.07)}
+.claim-card .wo-info .id{font-weight:800;font-size:.85rem;color:#7fb4f0}
+.claim-card .wo-info .det{font-size:.62rem;color:#5f7897;margin-top:.15rem}
+.claim-btns{display:flex;gap:.5rem}
+.claim-btns button{flex:1;padding:.65rem;border:none;border-radius:.5rem;font-size:.75rem;font-weight:700;cursor:pointer;transition:background .2s}
+.claim-btns .cancel{background:rgba(255,255,255,.07);color:#8ba3c4}.claim-btns .cancel:hover{background:rgba(255,255,255,.13)}
+.claim-btns .submit{background:#c9701f;color:#fff}.claim-btns .submit:hover{background:#e08228}
 .claim-btns .submit:disabled{opacity:.5;cursor:not-allowed}
-.notif{position:fixed;top:16px;right:16px;padding:14px 22px;border-radius:12px;font-size:13px;font-weight:700;z-index:99999;box-shadow:0 8px 32px rgba(0,0,0,.5);animation:slideIn .3s ease;cursor:pointer;max-width:400px;backdrop-filter:blur(8px)}
+
+.notif{position:fixed;top:1rem;right:1rem;padding:.8rem 1.3rem;border-radius:.6rem;font-size:.78rem;font-weight:700;z-index:99999;box-shadow:0 .5rem 2rem rgba(0,0,0,.5);animation:slideIn .3s ease;cursor:pointer;max-width:24rem;backdrop-filter:blur(8px)}
 .n-danger{background:rgba(198,40,40,.95);border:1px solid #ff5252}.n-success{background:rgba(26,107,60,.95);border:1px solid #4caf50}
-@keyframes slideIn{from{transform:translateX(120px);opacity:0}to{transform:translateX(0);opacity:1}}
-.empty{color:#7fa8d4;text-align:center;padding:40px;font-size:18px;font-weight:600}
+@keyframes slideIn{from{transform:translateX(7rem);opacity:0}to{transform:translateX(0);opacity:1}}
 </style>
 </head>
 <body>
@@ -62,6 +186,8 @@ function t(k){
   return T[k]||k;
 }
 
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
 function showNotif(text,type){
   var old=document.querySelector('.notif');if(old)old.remove();
   var n=document.createElement('div');n.className='notif n-'+(type||'danger');n.textContent=text;n.onclick=function(){n.remove();};
@@ -78,76 +204,85 @@ function fetchData(){
   }).catch(function(){});
 }
 
+function ticket(w){
+  // Tip burada tekrar edilmiyor — kart zaten "Arızalar"/"Planlı Bakım" sütununun
+  // altında, tipi sütun başlığı belirtiyor; tekrar yazmak dar kartta yer kaplayıp
+  // tarih/saatin kırpılmasına yol açıyordu.
+  var mold=esc(w.mold_id), id=esc(w.id), type=esc(w.type), time=esc((w.created_at||'').slice(5,16)), desc=esc(w.description||"");
+  var c='<div class="ticket pr-'+esc(w.priority)+'">';
+  c+='<div class="ticket-row1"><span class="ticket-mold">'+mold+'</span>';
+  c+='<span class="ticket-meta">'+id+' · '+time+'</span>';
+  c+='<span class="ticket-spacer"></span><span class="badge p-'+esc(w.priority)+'">'+esc(w.priority)+'</span></div>';
+  c+='<div class="ticket-row2"><span class="ticket-desc">'+desc+'</span>';
+  c+='<button class="btn-claim" onclick="openClaim(\''+id+"','"+mold+"','"+type+"','"+desc.replace(/'/g,"")+"')\">"+t("claim")+'</button></div></div>';
+  return c;
+}
+
 function render(d){
   var now=new Date();
   var h='';
   // Top
-  h+='<div class="top"><div><h1 style="font-size:30px;font-weight:900">🏭 '+t("title")+'</h1>';
-  h+='<div style="font-size:15px;color:#a8c5e8;margin-top:4px;font-weight:600">'+now.toLocaleDateString("tr-TR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})+" — "+now.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})+" · 12"+t("update")+"</div></div>";
-  h+='<div style="display:flex;gap:8px;align-items:center">';
-  h+='<a href="/" style="background:#1a6b3c;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-size:12px;font-weight:700;cursor:pointer;text-decoration:none;box-shadow:0 2px 8px rgba(26,107,60,.4);transition:all .2s">🔐 Giriş Yap</a>';
-  h+='<button onclick="toggleFS()" style="background:#1565c0;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:11px;font-weight:700;cursor:pointer">⛶ '+t("fullscreen")+'</button>';
+  h+='<div class="top"><div><h1>🏭 '+t("title")+'</h1>';
+  h+='<div class="meta">'+now.toLocaleDateString("tr-TR",{weekday:"long",year:"numeric",month:"long",day:"numeric"})+" — "+now.toLocaleTimeString("tr-TR",{hour:"2-digit",minute:"2-digit"})+" · 12"+t("update")+'</div></div>';
+  h+='<div class="top-actions">';
+  h+='<a href="/">🔐 '+t("login")+'</a>';
+  h+='<button onclick="toggleFS()">⛶ '+t("fullscreen")+'</button>';
   h+='</div></div>';
   // KPI
   h+='<div class="grid kpi-grid">';
-  h+=kpi("📋",d.open,t("open"),d.open>10?"#e65100":"#64b5f6");
-  h+=kpi("🔴",d.critical,t("crit"),d.critical>0?"#ff5252":"#4caf50");
-  h+=kpi("⏱",d.mttr>0?d.mttr+" dk":"—",t("mttr"),d.mttr>120?"#ff5252":"#4caf50");
-  h+=kpi("✅",d.closedToday,t("closed"),"#4caf50");
+  h+=kpi("📋",d.open,t("open"),d.open>10?"#e08228":"#7fb4f0");
+  h+=kpi("🔴",d.critical,t("crit"),d.critical>0?"#ff8a80":"#5ec98e");
+  h+=kpi("⏱",d.mttr>0?d.mttr+" dk":"—",t("mttr"),d.mttr>120?"#ff8a80":"#5ec98e");
+  h+=kpi("✅",d.closedToday,t("closed"),"#5ec98e");
   h+='</div>';
   // 3 sütun
   h+='<div class="grid main-grid">';
   // Pool
-  h+='<div class="card" style="border:1.5px solid #e65100"><h3 style="font-size:19px;font-weight:800;color:#ffb74d;margin-bottom:14px">🔧 '+t("pool")+' — '+t("poolSub")+' ('+((d.poolWos||[]).length)+')</h3>';
-  h+='<div style="display:flex;gap:12px">';
-  var _poolAriz=(d.poolWos||[]).filter(function(w){return w.type!=="PM";});
-  var _poolPm=(d.poolWos||[]).filter(function(w){return w.type==="PM";});
-  var _poolCard=function(w){
-    var c='<div style="background:#1e3556;border-radius:10px;padding:13px 15px;margin-bottom:8px;border:1px solid #2a4a7a;display:flex;justify-content:space-between;align-items:center">';
-    c+='<div><div style="font-weight:800;color:#fff;font-size:17px">'+w.id+'</div><div style="color:#a8c5e8;font-size:14px;margin-top:3px;font-weight:600">'+w.mold_id+' · '+w.type+'</div><div style="color:#ffb74d;font-size:13px;margin-top:2px;font-weight:600">🕐 '+(w.created_at||'').slice(5,16)+'</div>';
-    c+='<div style="color:#7fa8d4;font-size:13px;margin-top:2px">'+w.description+'</div></div>';
-    c+='<div style="text-align:right"><span class="badge p-'+w.priority+'">'+w.priority+'</span><br>';
-    c+='<button class="btn-claim" onclick="openClaim(\''+w.id+"','"+w.mold_id+"','"+w.type+"','"+(w.description||"").replace(/'/g,"")+"')\">🤚 "+t("claim")+'</button></div></div>';
-    return c;
-  };
-  h+='<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:#ff8a80;margin-bottom:8px">🔴 Arızalar ('+_poolAriz.length+')</div>';
-  if(!_poolAriz.length)h+='<div class="empty" style="padding:16px">'+t("noPool")+'</div>';
-  _poolAriz.forEach(function(w){h+=_poolCard(w);});
-  h+='</div>';
-  h+='<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:800;color:#4dd0e1;margin-bottom:8px">🔧 Planlı Bakım ('+_poolPm.length+')</div>';
-  if(!_poolPm.length)h+='<div class="empty" style="padding:16px">'+t("noPool")+'</div>';
-  _poolPm.forEach(function(w){h+=_poolCard(w);});
-  h+='</div>';
-  h+='</div>';
-  h+='</div>';
+  var poolAriz=(d.poolWos||[]).filter(function(w){return w.type!=="PM";});
+  var poolPm=(d.poolWos||[]).filter(function(w){return w.type==="PM";});
+  h+='<div class="card panel-pool"><div class="panel-head"><span class="t">🔧 '+t("pool")+'</span><span class="n">'+((d.poolWos||[]).length)+'</span></div>';
+  h+='<div class="pool-cols">';
+  h+='<div class="pool-col"><div class="pool-col-head" style="color:#ff8a80">🔴 Arızalar<span class="n" style="margin-left:auto">'+poolAriz.length+'</span></div>';
+  h+='<div class="pool-col-list">';
+  if(!poolAriz.length)h+='<div class="empty">'+t("noPool")+'</div>';
+  poolAriz.forEach(function(w){h+=ticket(w);});
+  h+='</div></div>';
+  h+='<div class="pool-col"><div class="pool-col-head" style="color:#7fd6e0">🔧 Planlı Bakım<span class="n" style="margin-left:auto">'+poolPm.length+'</span></div>';
+  h+='<div class="pool-col-list">';
+  if(!poolPm.length)h+='<div class="empty">'+t("noPool")+'</div>';
+  poolPm.forEach(function(w){h+=ticket(w);});
+  h+='</div></div>';
+  h+='</div></div>';
   // Progress
-  h+='<div class="card" style="border:1.5px solid #1565c0"><h3 style="font-size:19px;font-weight:800;color:#90caf9;margin-bottom:14px">🔄 '+t("progress")+' ('+((d.inProgressWos||[]).length)+')</h3>';
+  h+='<div class="card panel-progress"><div class="panel-head"><span class="t">🔄 '+t("progress")+'</span><span class="n">'+((d.inProgressWos||[]).length)+'</span></div>';
+  h+='<div class="wlist">';
   if(!(d.inProgressWos||[]).length)h+='<div class="empty">'+t("noProgress")+'</div>';
   (d.inProgressWos||[]).forEach(function(w){
-    h+='<div class="progress-row"><div><div style="font-weight:800;color:#fff;font-size:17px">'+w.id+' <span style="color:#90caf9;font-size:14px">→ '+(w.assigned||"?")+'</span></div>';
-    h+='<div style="color:#4a6a8a;font-size:9px;margin-top:2px">'+w.mold_id+' · '+w.type+'</div>';
-    h+='<div style="color:#7fa8d4;font-size:13px;margin-top:2px">'+w.description+'</div></div>';
-    h+='<div style="text-align:right;font-size:8px;color:#2a4a6b">';
-    if(w.started_at)h+='<div>'+t("start")+': '+(w.started_at||"").slice(11,16)+'</div>';
-    h+='<span class="badge p-'+w.priority+'">'+w.priority+'</span></div></div>';
-  });
-  h+='</div>';
-  // All open
-  h+='<div class="card"><h3 style="font-size:19px;font-weight:800;color:#fff;margin-bottom:14px">📋 '+t("allOpen")+' ('+d.open+')</h3>';
-  (d.openWos||[]).forEach(function(w){
-    h+='<div class="wo-row"><div style="flex:1;min-width:0"><div style="display:flex;gap:5px;align-items:center">';
-    h+='<span style="font-weight:700;color:#fff;font-size:10px">'+w.id+'</span><span class="badge p-'+w.priority+'">'+w.priority+'</span></div>';
-    h+='<div style="color:#a8c5e8;font-size:13px;margin-top:2px;font-weight:600">'+w.mold_id+' · '+(w.description||"")+' <span style="color:#ffb74d">· '+(w.created_at||'').slice(5,16)+'</span></div></div>';
-    h+='<div style="font-size:13px;text-align:right;font-weight:600">'+(w.assigned?'<span style="color:#90caf9">👤 '+w.assigned+'</span>':'<span style="color:#ffb74d">⏳ '+t("waiting")+'</span>')+'</div></div>';
+    h+='<div class="progress-row"><div style="min-width:0"><div class="wrow-top"><span class="wrow-mold">'+esc(w.mold_id)+'</span>';
+    h+='<span class="wrow-id">'+esc(w.id)+'</span><span style="color:#7fb4f0;font-size:.68rem;font-weight:700">→ '+esc(w.assigned||"?")+'</span></div>';
+    h+='<div class="wrow-desc" style="white-space:normal">'+esc(w.description)+'</div></div>';
+    h+='<div class="wrow-side">';
+    if(w.started_at)h+='<div class="wrow-time">'+t("start")+': '+esc((w.started_at||"").slice(11,16))+'</div>';
+    h+='<span class="badge p-'+esc(w.priority)+'">'+esc(w.priority)+'</span></div></div>';
   });
   h+='</div></div>';
-  // Corner buttons
+  // All open
+  h+='<div class="card"><div class="panel-head"><span class="t">📋 '+t("allOpen")+'</span><span class="n">'+d.open+'</span></div>';
+  h+='<div class="wlist">';
+  (d.openWos||[]).forEach(function(w){
+    h+='<div class="wrow"><div class="wrow-main"><div class="wrow-top"><span class="wrow-mold">'+esc(w.mold_id)+'</span>';
+    h+='<span class="wrow-id">'+esc(w.id)+'</span><span class="badge p-'+esc(w.priority)+'">'+esc(w.priority)+'</span></div>';
+    h+='<div class="wrow-desc">'+esc(w.description||"")+'</div></div>';
+    h+='<div class="wrow-side">'+(w.assigned?'<span style="color:#7fb4f0">👤 '+esc(w.assigned)+'</span>':'<span style="color:#d9a441">⏳ '+t("waiting")+'</span>')+'<div class="wrow-time">'+esc((w.created_at||'').slice(5,16))+'</div></div></div>';
+  });
+  h+='</div></div>';
+  h+='</div>';
 
   document.getElementById("tv").innerHTML=h;
 }
 
 function kpi(ico,val,label,color){
-  return '<div class="kpi"><div class="ico">'+ico+'</div><div class="val" style="color:'+(color||"#64b5f6")+'">'+val+'</div><div class="lbl">'+label+'</div></div>';
+  return '<div class="kpi"><div class="ico">'+ico+'</div><div class="val" style="color:'+(color||"#7fb4f0")+'">'+val+'</div><div class="lbl">'+label+'</div></div>';
 }
 function toggleFS(){if(!document.fullscreenElement)document.documentElement.requestFullscreen().catch(function(){});else document.exitFullscreen();}
 
@@ -159,7 +294,7 @@ function openClaim(id,mold,type,desc){
   m.innerHTML='<div class="claim-card">'
     +'<h2>🤚 '+t("claimTitle")+'</h2>'
     +'<div class="sub">'+t("claimTitle")+'</div>'
-    +'<div class="wo-info"><div class="id">'+id+'</div><div class="det">'+mold+' · '+type+'</div><div class="det">'+desc+'</div></div>'
+    +'<div class="wo-info"><div class="id">'+esc(id)+'</div><div class="det">'+esc(mold)+' · '+esc(type)+'</div><div class="det">'+esc(desc)+'</div></div>'
     +'<label>'+t("user")+'</label><input id="c-user" placeholder="'+t("user")+'" autofocus>'
     +'<label>'+t("pass")+'</label><input id="c-pass" type="password" placeholder="'+t("pass")+'">'
     +'<div id="c-err"></div>'

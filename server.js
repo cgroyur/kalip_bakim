@@ -380,7 +380,7 @@ app.post("/api/login", loginLimiter, validate(loginSchema), async (req, res) => 
   else await addAudit(u.id, u.name, u.role, "Giriş", "auth", null, `${u.name} sisteme giriş yaptı`);
   res.json({
     token,
-    user: { id:u.id, name:u.name, role:u.role, username:u.username },
+    user: { id:u.id, name:u.name, role:u.role, username:u.username, supplier_name: u.supplier_name || null, custom_pages: u.custom_pages || null },
     takeover: !!prev,
     must_change_password: !!u.must_change_password
   });
@@ -419,7 +419,8 @@ app.get("/api/state", auth, async (req, res) => {
   ]);
   const state = { ...extra, molds, wos };
   state.users = users.filter(u=>u.active)
-    .map(u => ({ id:u.id, name:u.name, role:u.role, username:u.username, user:u.username, pass:"" }));
+    .map(u => ({ id:u.id, name:u.name, role:u.role, username:u.username, user:u.username, pass:"",
+      supplier_name: u.supplier_name || null, custom_pages: u.custom_pages || null }));
   state.auditLog = auditRecent;
   res.json(state);
 });
@@ -542,7 +543,7 @@ app.post("/api/state", (req, res, next) => {
 // ── KULLANICILAR ──
 app.get("/api/users", auth, adminOnly, async (req, res) => {
   const users = await store.getUsers();
-  res.json(users.map(u => ({ id:u.id, name:u.name, role:u.role, username:u.username, active:u.active, supplier_name:u.supplier_name || null })));
+  res.json(users.map(u => ({ id:u.id, name:u.name, role:u.role, username:u.username, active:u.active, supplier_name:u.supplier_name || null, custom_pages:u.custom_pages || null })));
 });
 
 app.post("/api/users", auth, adminOnly, validate(createUserSchema), async (req, res) => {
@@ -568,7 +569,7 @@ app.post("/api/users", auth, adminOnly, validate(createUserSchema), async (req, 
 });
 
 app.put("/api/users/:id", auth, adminOnly, validate(updateUserSchema), async (req, res) => {
-  let { name, role, username, password, supplier_name } = req.body;
+  let { name, role, username, password, supplier_name, custom_pages } = req.body;
   if (password && String(password).length < MIN_PASSWORD_LEN)
     return res.status(400).json({ error:`Şifre en az ${MIN_PASSWORD_LEN} karakter olmalı` });
   username = username ? String(username).trim() : username;
@@ -590,6 +591,7 @@ app.put("/api/users/:id", auth, adminOnly, validate(updateUserSchema), async (re
   if (role) u.role=role;
   if (username) u.username=username;
   if (supplier_name !== undefined) u.supplier_name = supplier_name || null;
+  if (custom_pages !== undefined) u.custom_pages = custom_pages;
   u.active = true;
   // Admin başkasının şifresini sıfırladığında ilk girişte değiştirme zorunluluğu
   if (password) { u.password_hash = bcrypt.hashSync(password,10); u.must_change_password = true; }
@@ -868,6 +870,7 @@ app.get("/api/supplier/wos", auth, supplierOnly, async (req, res) => {
     id: w.id, mold_id: w.mold_id, type: w.type, status: w.status,
     created_at: w.created_at, started_at: w.started_at, closed_at: w.closed_at, description: w.description,
     cavity_no: w.cavity_no, teklif_items: w.teklif_items, teklif_total: w.teklif_total, sample_sent: !!w.sample_sent,
+    checklist_done: w.checklist_done || [], quality_approved: !!w.quality_approved,
   })));
 });
 
@@ -907,16 +910,17 @@ app.post("/api/supplier/pm/:id/complete", auth, supplierOnly, validate(supplierP
   if (wo.status === "KAPATILDI" || wo.status === "TAMAMLANDI")
     return res.status(400).json({ error: "Bu iş zaten tamamlanmış" });
   const ts = nowStrTR();
-  // Direkt KAPATILDI'ya geçmez — dışarıdan gelen "tamamlandı" bilgisine körü
-  // körüne güvenilmez; mevcut "Doğrulama Bekleyen İşler" kuyruğuna düşer,
-  // lider onayladığında gerçekten kapanır (bkz. LeaderPanel "verify" sayfası).
-  wo.status = "TAMAMLANDI";
-  wo.closed_at = null;
+  // Planlı bakım — arızi onarımın aksine — ayrıca bir doğrulama gerektirmez:
+  // doğrudan KAPATILDI'ya geçer. İç PM checklist'iyle aynı madde seti burada
+  // da kullanılır (checklist_done), tedarikçinin gördüğü sorunlar not olarak
+  // eklenebilir.
+  wo.status = "KAPATILDI";
+  wo.closed_at = ts;
+  wo.checklist_done = Array.isArray(req.body.checklist_done) ? req.body.checklist_done : [];
   wo.description = (wo.description || "") + (req.body.note ? ` | Tedarikçi notu: ${req.body.note}` : "");
   await store.upsertWorkOrder(wo);
   broadcast({ type: "wo_updated", wo });
-  // Şot sayacı, iç PM akışıyla aynı şekilde tamamlanma anında sıfırlanır —
-  // onay kuyruğu WO'nun kapanışını, sayaç ise fiziksel bakımın yapıldığını izler.
+  // Şot sayacı tamamlanma anında sıfırlanır.
   const molds = await store.getMolds();
   const mold = molds.find(m => m.id === wo.mold_id);
   if (mold) {
@@ -926,16 +930,20 @@ app.post("/api/supplier/pm/:id/complete", auth, supplierOnly, validate(supplierP
     broadcast({ type: "molds_replaced", molds });
   }
   await addAudit(req.user.id, supplierName, "tedarikci", "Tedarikçi Planlı Bakımı Tamamladı", "wo", wo.id,
-    `${wo.mold_id} için planlı bakım tamamlandı, lider onayı bekliyor`);
+    `${wo.mold_id} için planlı bakım tamamlandı ve kapatıldı`);
   res.json({ ok: true, wo });
 });
 
-// ── Tedarikçi arıza bildirimi + teklif ──
-// Akış: tedarikçi arızayı ve kırılımlı fiyat teklifini girer (TEKLIF_BEKLIYOR)
-// → lider/admin onaylar (DEVAM_EDİYOR, tedarikçi çalışır) veya reddeder (kalıp
-// "Bakımda"ya alınır, iş iç arıza havuzuna düşer) → onaylanan işte tedarikçi
-// numune gönderdiğini işaretlemeden tamamlayamaz → tamamlanınca genel kalite
-// onayı ayarından BAĞIMSIZ olarak her zaman KALITE_BEKLIYOR'a düşer (tedarikçi
+// ── Tedarikçi arıza bildirimi + (opsiyonel) teklif ──
+// Akış: tedarikçi arızayı bildirir; kırılımlı fiyat teklifi eklemesi
+// ZORUNLU DEĞİL — sadece bilgilendirmek isterse teklif_items boş geçilir.
+//   • teklif_items doluysa → TEKLIF_BEKLIYOR (fiyatlı, onay gerekiyor)
+//   • teklif_items boşsa  → BILDIRIM_BEKLIYOR (fiyatsız, sadece bilgi notu)
+// Her iki durumda da fabrika tarafı aynı onay ekranından karar verir: kabul
+// ederse (DEVAM_EDİYOR, tedarikçi çalışır) veya reddederse (kalıp "Bakımda"ya
+// alınır, iş iç arıza havuzuna düşer). Onaylanan işte tedarikçi numune
+// gönderdiğini işaretlemeden tamamlayamaz → tamamlanınca genel kalite onayı
+// ayarından BAĞIMSIZ olarak her zaman KALITE_BEKLIYOR'a düşer (tedarikçi
 // kendi yaptığı iş için ayrıca bir güven kontrolü).
 app.post("/api/supplier/ariz", auth, supplierOnly, validate(supplierArizCreateSchema), async (req, res) => {
   const supplierName = await getSupplierName(req.user.id);
@@ -951,20 +959,24 @@ app.post("/api/supplier/ariz", auth, supplierOnly, validate(supplierArizCreateSc
   }, 0);
   const id = "LG-" + String(maxNum + 1).padStart(3, "0");
   const ts = nowStrTR();
-  const teklifTotal = req.body.teklif_items.reduce((s, it) => s + it.price, 0);
+  const items = req.body.teklif_items || [];
+  const hasTeklif = items.length > 0;
+  const teklifTotal = items.reduce((s, it) => s + it.price, 0);
   const wo = {
-    id, mold_id: mold.id, type: "DIŞ_ARIZ", status: "TEKLIF_BEKLIYOR", priority: "NORMAL",
+    id, mold_id: mold.id, type: "DIŞ_ARIZ", status: hasTeklif ? "TEKLIF_BEKLIYOR" : "BILDIRIM_BEKLIYOR", priority: "NORMAL",
     cavity_no: req.body.cavity_no || null,
     description: req.body.description,
-    teklif_items: req.body.teklif_items, teklif_total: teklifTotal,
+    teklif_items: items, teklif_total: teklifTotal,
     sample_sent: false,
     assigned: null, reported_by: req.user.id, created_at: ts, started_at: null, closed_at: null,
     source: "tedarikci_portali", supplier_name: supplierName,
   };
   await store.upsertWorkOrder(wo);
   broadcast({ type: "wo_updated", wo });
-  await addAudit(req.user.id, supplierName, "tedarikci", "Tedarikçi Teklifi Gönderildi", "wo", id,
-    `${mold.id} için arıza bildirdi, teklif tutarı ₺${teklifTotal.toLocaleString("tr-TR")}, onay bekliyor`);
+  await addAudit(req.user.id, supplierName, "tedarikci", hasTeklif ? "Tedarikçi Teklifi Gönderildi" : "Tedarikçi Bildirimi Gönderildi", "wo", id,
+    hasTeklif
+      ? `${mold.id} için arıza bildirdi, teklif tutarı ₺${teklifTotal.toLocaleString("tr-TR")}, onay bekliyor`
+      : `${mold.id} için teklifsiz arıza bildirimi yapıldı, onay bekliyor`);
   res.json({ ok: true, wo });
 });
 
@@ -1009,29 +1021,43 @@ app.post("/api/supplier/ariz/:id/complete", auth, supplierOnly, validate(supplie
   res.json({ ok: true, wo });
 });
 
-// ── Lider/admin: tedarikçi tekliflerini onayla/reddet ──
+// ── Admin (varsayılan) / yetkili lider: tedarikçi teklif+bildirimlerini onayla/reddet ──
+// Bu iki route, hem fiyat teklifi (TEKLIF_BEKLIYOR) hem de fiyatsız bildirim
+// (BILDIRIM_BEKLIYOR) durumundaki işleri aynı şekilde işler — onay her iki
+// durumda da tedarikçiyi çalışmaya başlatır, red her iki durumda da kalıbı
+// fiziksel olarak geri getirir.
+const TEKLIF_PENDING_STATUSES = ["TEKLIF_BEKLIYOR", "BILDIRIM_BEKLIYOR"];
 app.post("/api/workorders/:id/teklif-approve", auth, async (req, res) => {
   if (!["admin", "leader"].includes(req.user.role)) return res.status(403).json({ error: "Yetkisiz" });
   const wo = await store.getWorkOrderById(req.params.id);
-  if (!wo || wo.status !== "TEKLIF_BEKLIYOR") return res.status(404).json({ error: "Onay bekleyen teklif bulunamadı" });
+  if (!wo || !TEKLIF_PENDING_STATUSES.includes(wo.status)) return res.status(404).json({ error: "Onay bekleyen kayıt bulunamadı" });
   wo.status = "DEVAM_EDİYOR";
   wo.started_at = nowStrTR();
+  wo.teklif_decision = "approved";
+  wo.teklif_decided_by = req.user.id;
+  wo.teklif_decided_by_name = req.user.name;
+  wo.teklif_decided_at = nowStrTR();
   await store.upsertWorkOrder(wo);
   broadcast({ type: "wo_updated", wo });
-  await addAudit(req.user.id, req.user.name, req.user.role, "Tedarikçi Teklifi Onaylandı", "wo", wo.id,
-    `${wo.mold_id} için ${wo.supplier_name} teklifi onaylandı (₺${(wo.teklif_total || 0).toLocaleString("tr-TR")})`);
+  await addAudit(req.user.id, req.user.name, req.user.role, "Tedarikçi Bildirimi Onaylandı", "wo", wo.id,
+    `${wo.mold_id} için ${wo.supplier_name} bildirimi onaylandı` + (wo.teklif_total ? ` (₺${wo.teklif_total.toLocaleString("tr-TR")})` : " (teklifsiz)"));
   res.json({ ok: true, wo });
 });
 
 app.post("/api/workorders/:id/teklif-reject", auth, validate(teklifRejectSchema), async (req, res) => {
   if (!["admin", "leader"].includes(req.user.role)) return res.status(403).json({ error: "Yetkisiz" });
   const wo = await store.getWorkOrderById(req.params.id);
-  if (!wo || wo.status !== "TEKLIF_BEKLIYOR") return res.status(404).json({ error: "Onay bekleyen teklif bulunamadı" });
+  if (!wo || !TEKLIF_PENDING_STATUSES.includes(wo.status)) return res.status(404).json({ error: "Onay bekleyen kayıt bulunamadı" });
   // Kalıp fiziksel olarak geri döndüğü kabul edilir — durum "Bakımda"ya alınır
   // (Transfer'de kalmaz) ve iş, iç arıza havuzuna atanmamış olarak düşer.
   wo.status = "BEKLEMEDE";
   wo.assigned = null;
-  wo.description = (wo.description || "") + (req.body.reason ? ` | Teklif reddedildi: ${req.body.reason}` : " | Teklif reddedildi, kalıp iç bünyede onarılacak");
+  wo.description = (wo.description || "") + (req.body.reason ? ` | Reddedildi: ${req.body.reason}` : " | Reddedildi, kalıp iç bünyede onarılacak");
+  wo.teklif_decision = "rejected";
+  wo.teklif_decided_by = req.user.id;
+  wo.teklif_decided_by_name = req.user.name;
+  wo.teklif_decided_at = nowStrTR();
+  wo.teklif_reject_reason = req.body.reason || null;
   await store.upsertWorkOrder(wo);
   broadcast({ type: "wo_updated", wo });
   const molds = await store.getMolds();
@@ -1041,8 +1067,8 @@ app.post("/api/workorders/:id/teklif-reject", auth, validate(teklifRejectSchema)
     await store.upsertMold(mold);
     broadcast({ type: "molds_replaced", molds });
   }
-  await addAudit(req.user.id, req.user.name, req.user.role, "Tedarikçi Teklifi Reddedildi", "wo", wo.id,
-    `${wo.mold_id} için ${wo.supplier_name} teklifi reddedildi, kalıp Bakımda'ya alındı, iç arıza havuzuna düştü`);
+  await addAudit(req.user.id, req.user.name, req.user.role, "Tedarikçi Bildirimi Reddedildi", "wo", wo.id,
+    `${wo.mold_id} için ${wo.supplier_name} bildirimi reddedildi, kalıp Bakımda'ya alındı, iç arıza havuzuna düştü`);
   res.json({ ok: true, wo });
 });
 
