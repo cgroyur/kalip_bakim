@@ -211,6 +211,7 @@ var SCOLOR = {
   BEKLEMEYE_ALINDI: "tag-purple",
   TAMAMLANDI: "tag-teal",
   KALITE_BEKLIYOR: "tag-pink",
+  TEKLIF_BEKLIYOR: "tag-amber",
   KAPATILDI: "tag-green"
 };
 var SLABEL = {
@@ -219,6 +220,7 @@ var SLABEL = {
   BEKLEMEYE_ALINDI: "Beklemeye Alındı",
   TAMAMLANDI: "Doğrulama Bekliyor",
   KALITE_BEKLIYOR: "Kalite Onayı Bekliyor",
+  TEKLIF_BEKLIYOR: "Teklif Onayı Bekliyor",
   KAPATILDI: "Kapatıldı"
 };
 var PRANK = {
@@ -595,6 +597,275 @@ function exportToExcel(data, filename) {
     return false;
   }
 }
+// ── TEDARİKÇİ PORTALI ──
+// Ana uygulama shell'inden tamamen izole, sade bir ekran. Kendi verisini
+// SADECE /api/supplier/* uçlarından çeker — data/ctx/Sidebar/menus'a hiç
+// dokunmaz, App()'in genel state senkronizasyonuna dahil değildir.
+function SupplierPortal(_refSP) {
+  var user = _refSP.user, onLogout = _refSP.onLogout;
+  var _m1 = useState([]), _m2 = _slicedToArray(_m1, 2), molds = _m2[0], setMolds = _m2[1];
+  var _w1 = useState([]), _w2 = _slicedToArray(_w1, 2), wos = _w2[0], setWos = _w2[1];
+  var _l1 = useState(true), _l2 = _slicedToArray(_l1, 2), loading = _l2[0], setLoading = _l2[1];
+  var _busy1 = useState(null), _busy2 = _slicedToArray(_busy1, 2), busyMoldId = _busy2[0], setBusyMoldId = _busy2[1];
+  var _note1 = useState({}), _note2 = _slicedToArray(_note1, 2), notes = _note2[0], setNotes = _note2[1];
+  var _arizForm1 = useState(null), _arizForm2 = _slicedToArray(_arizForm1, 2), arizFormMold = _arizForm2[0], setArizFormMold = _arizForm2[1];
+
+  var load = function () {
+    setLoading(true);
+    Promise.all([apiGet("/api/supplier/molds"), apiGet("/api/supplier/wos")]).then(function (res) {
+      setMolds(res[0] || []);
+      setWos(res[1] || []);
+      setLoading(false);
+    });
+  };
+  useEffect(function () { load(); }, []);
+
+  var openPmFor = function (moldId) {
+    return wos.find(function (w) { return w.mold_id === moldId && w.type === "PM" && w.status !== "KAPATILDI" && w.status !== "TAMAMLANDI"; });
+  };
+  var activeArizFor = function (moldId) {
+    return wos.find(function (w) { return w.mold_id === moldId && w.type === "DIŞ_ARIZ" && w.status !== "KAPATILDI"; });
+  };
+
+  var startPm = function (moldId) {
+    setBusyMoldId(moldId);
+    fetch("/api/supplier/pm", { method: "POST", headers: apiHeaders(), body: JSON.stringify({ mold_id: moldId }) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        setBusyMoldId(null);
+        if (!res.ok) { alert("❌ " + (res.error || "Başlatılamadı")); return; }
+        load();
+      }).catch(function () { setBusyMoldId(null); alert("❌ Sunucuya ulaşılamadı"); });
+  };
+
+  var completePm = function (wo) {
+    if (!window.confirm("Planlı bakımı tamamladığınızı onaylıyor musunuz? Bu bilgi, sizin fabrikanızdaki yetkilinin onayına gönderilecek.")) return;
+    setBusyMoldId(wo.mold_id);
+    fetch("/api/supplier/pm/" + wo.id + "/complete", {
+      method: "POST", headers: apiHeaders(), body: JSON.stringify({ note: notes[wo.id] || "" })
+    }).then(function (r) { return r.json(); })
+      .then(function (res) {
+        setBusyMoldId(null);
+        if (!res.ok) { alert("❌ " + (res.error || "Tamamlanamadı")); return; }
+        setNotes(function (p) { return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, wo.id, "")); });
+        load();
+      }).catch(function () { setBusyMoldId(null); alert("❌ Sunucuya ulaşılamadı"); });
+  };
+
+  var submitAriz = function (moldId, payload) {
+    setBusyMoldId(moldId);
+    fetch("/api/supplier/ariz", { method: "POST", headers: apiHeaders(), body: JSON.stringify(_objectSpread({ mold_id: moldId }, payload)) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        setBusyMoldId(null);
+        if (!res.ok) { alert("❌ " + (res.error || "Gönderilemedi")); return; }
+        setArizFormMold(null);
+        load();
+      }).catch(function () { setBusyMoldId(null); alert("❌ Sunucuya ulaşılamadı"); });
+  };
+
+  var sendSample = function (wo) {
+    if (!window.confirm("Numuneyi gönderdiğinizi onaylıyor musunuz?")) return;
+    setBusyMoldId(wo.mold_id);
+    fetch("/api/supplier/ariz/" + wo.id + "/sample-sent", { method: "POST", headers: apiHeaders(), body: "{}" })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        setBusyMoldId(null);
+        if (!res.ok) { alert("❌ " + (res.error || "İşaretlenemedi")); return; }
+        load();
+      }).catch(function () { setBusyMoldId(null); alert("❌ Sunucuya ulaşılamadı"); });
+  };
+
+  var completeAriz = function (wo) {
+    if (!window.confirm("Onarımı tamamladığınızı onaylıyor musunuz? Bu, kalite onayına gönderilecek.")) return;
+    setBusyMoldId(wo.mold_id);
+    fetch("/api/supplier/ariz/" + wo.id + "/complete", {
+      method: "POST", headers: apiHeaders(), body: JSON.stringify({ note: notes[wo.id] || "" })
+    }).then(function (r) { return r.json(); })
+      .then(function (res) {
+        setBusyMoldId(null);
+        if (!res.ok) { alert("❌ " + (res.error || "Tamamlanamadı")); return; }
+        setNotes(function (p) { return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, wo.id, "")); });
+        load();
+      }).catch(function () { setBusyMoldId(null); alert("❌ Sunucuya ulaşılamadı"); });
+  };
+
+  return React.createElement("div", { style: { minHeight: "100vh", background: "#f0f2f5" } },
+    React.createElement("div", { style: { background: "#0f2044", color: "#fff", padding: "16px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" } },
+      React.createElement("div", null,
+        React.createElement("div", { style: { fontSize: 15, fontWeight: 800 } }, "🚚 Tedarikçi Portalı"),
+        React.createElement("div", { style: { fontSize: 11, color: "#7fa8d4", marginTop: 2 } }, user.name)
+      ),
+      React.createElement("button", {
+        onClick: onLogout,
+        style: { background: "rgba(255,255,255,.12)", color: "#fff", border: "none", borderRadius: 8, padding: "8px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer" }
+      }, "Çıkış Yap")
+    ),
+    React.createElement("div", { style: { maxWidth: 720, margin: "0 auto", padding: 20 } },
+      React.createElement("h2", { style: { fontSize: 16, fontWeight: 800, color: "#0f2044", marginBottom: 4 } }, "Kalıplarınız"),
+      React.createElement("p", { style: { fontSize: 12, color: "#6b7fa3", marginBottom: 16 } },
+        "Şu an sizde bulunan kalıplar aşağıda listelenir. Planlı bakımı başlattığınızda ve tamamladığınızda, fabrika yetkilisi onayına gönderilir."),
+      loading && React.createElement("div", { style: { textAlign: "center", padding: 40, color: "#9aa5b4" } }, "Yükleniyor..."),
+      !loading && molds.length === 0 && React.createElement("div", { style: { background: "#fff", borderRadius: 12, padding: 40, textAlign: "center", color: "#9aa5b4" } },
+        "Şu an sizde görünen bir kalıp yok."),
+      !loading && molds.map(function (m) {
+        var pct = Math.min(100, Math.round((m.pm_counter || 0) / (m.pm_interval || 50000) * 100));
+        var pmDue = pct >= 90;
+        var openWo = openPmFor(m.id);
+        var arizWo = activeArizFor(m.id);
+        return React.createElement("div", { key: m.id, style: { background: "#fff", borderRadius: 12, padding: 18, marginBottom: 12, border: "1px solid #e8edf2" } },
+          React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 } },
+            React.createElement("div", null,
+              React.createElement("div", { style: { fontWeight: 800, fontSize: 14, color: "#0f2044" } }, m.id),
+              React.createElement("div", { style: { fontSize: 12, color: "#6b7fa3", marginTop: 2 } }, m.part_name)
+            ),
+            pmDue && !openWo && React.createElement("span", { style: { background: "#fff3e0", color: "#e65100", padding: "4px 10px", borderRadius: 20, fontSize: 10, fontWeight: 700 } }, "⚠ PM Gerekiyor")
+          ),
+          React.createElement("div", { style: { fontSize: 11, color: "#9aa5b4", marginBottom: 12 } },
+            "Son PM: " + (m.last_pm_date || "—") + " · PM Sayacı: %" + pct),
+          !openWo && React.createElement("button", {
+            disabled: busyMoldId === m.id,
+            onClick: function () { startPm(m.id); },
+            style: { background: "#0f2044", color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 12, fontWeight: 700, cursor: busyMoldId === m.id ? "not-allowed" : "pointer" }
+          }, busyMoldId === m.id ? "⏳..." : "🔧 Planlı Bakım Başlat"),
+          openWo && React.createElement("div", { style: { background: "#f0f9f0", border: "1px solid #c8e6c9", borderRadius: 8, padding: 12 } },
+            React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "#1a6b3c", marginBottom: 8 } }, "Planlı bakım devam ediyor (" + String(openWo.started_at || "").slice(0, 16) + " başladı)"),
+            React.createElement("input", {
+              className: "form-input", placeholder: "Kısa not (opsiyonel)", style: { marginBottom: 8, width: "100%" },
+              value: notes[openWo.id] || "",
+              onChange: function (e) { setNotes(function (p) { return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, openWo.id, e.target.value)); }); }
+            }),
+            React.createElement("button", {
+              disabled: busyMoldId === m.id,
+              onClick: function () { completePm(openWo); },
+              style: { background: "#1a6b3c", color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 12, fontWeight: 700, cursor: busyMoldId === m.id ? "not-allowed" : "pointer" }
+            }, busyMoldId === m.id ? "⏳..." : "✅ Tamamlandı")
+          )
+          , React.createElement("div", { style: { marginTop: 12, paddingTop: 12, borderTop: "1px solid #f0f3f7" } },
+            !arizWo && React.createElement("button", {
+              disabled: busyMoldId === m.id,
+              onClick: function () { setArizFormMold(m.id); },
+              style: { background: "#c62828", color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 12, fontWeight: 700, cursor: busyMoldId === m.id ? "not-allowed" : "pointer" }
+            }, "🚨 Arıza Bildir / Teklif Ver"),
+            arizWo && arizWo.status === "TEKLIF_BEKLIYOR" && React.createElement("div", { style: { background: "#fff8e1", border: "1px solid #ffe082", borderRadius: 8, padding: 12 } },
+              React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "#8d6e00", marginBottom: 6 } }, "⏳ Teklifiniz onay bekliyor"),
+              React.createElement("div", { style: { fontSize: 11, color: "#6b7fa3", marginBottom: 6 } }, arizWo.description),
+              (arizWo.teklif_items || []).map(function (it, i) {
+                return React.createElement("div", { key: i, style: { display: "flex", justifyContent: "space-between", fontSize: 11, color: "#4a5568", padding: "2px 0" } },
+                  React.createElement("span", null, it.op), React.createElement("span", null, "₺" + it.price.toLocaleString("tr-TR")));
+              }),
+              React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 800, color: "#8d6e00", marginTop: 6, paddingTop: 6, borderTop: "1px solid #ffe082" } },
+                React.createElement("span", null, "Toplam"), React.createElement("span", null, "₺" + (arizWo.teklif_total || 0).toLocaleString("tr-TR")))
+            ),
+            arizWo && arizWo.status === "DEVAM_EDİYOR" && React.createElement("div", { style: { background: "#f0f9f0", border: "1px solid #c8e6c9", borderRadius: 8, padding: 12 } },
+              React.createElement("div", { style: { fontSize: 12, fontWeight: 700, color: "#1a6b3c", marginBottom: 8 } }, "✅ Teklif onaylandı — onarımı gerçekleştirebilirsiniz"),
+              !arizWo.sample_sent && React.createElement("button", {
+                disabled: busyMoldId === m.id,
+                onClick: function () { sendSample(arizWo); },
+                style: { background: "#1565c0", color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 12, fontWeight: 700, cursor: busyMoldId === m.id ? "not-allowed" : "pointer" }
+              }, busyMoldId === m.id ? "⏳..." : "📦 Numune Gönderildi"),
+              arizWo.sample_sent && React.createElement("div", null,
+                React.createElement("div", { style: { fontSize: 11, color: "#1a6b3c", marginBottom: 8 } }, "✓ Numune gönderildi"),
+                React.createElement("input", {
+                  className: "form-input", placeholder: "Kısa not (opsiyonel)", style: { marginBottom: 8, width: "100%" },
+                  value: notes[arizWo.id] || "",
+                  onChange: function (e) { setNotes(function (p) { return _objectSpread(_objectSpread({}, p), {}, _defineProperty({}, arizWo.id, e.target.value)); }); }
+                }),
+                React.createElement("button", {
+                  disabled: busyMoldId === m.id,
+                  onClick: function () { completeAriz(arizWo); },
+                  style: { background: "#1a6b3c", color: "#fff", border: "none", borderRadius: 8, padding: "9px 18px", fontSize: 12, fontWeight: 700, cursor: busyMoldId === m.id ? "not-allowed" : "pointer" }
+                }, busyMoldId === m.id ? "⏳..." : "✅ Onarımı Tamamla")
+              )
+            ),
+            arizWo && arizWo.status === "KALITE_BEKLIYOR" && React.createElement("div", { style: { background: "#fce4ec", border: "1px solid #f8bbd0", borderRadius: 8, padding: 12, fontSize: 12, fontWeight: 700, color: "#ab2f6e" } },
+              "🧪 Onarımınız tamamlandı, kalite onayı bekleniyor")
+          )
+        );
+      })
+    ),
+    arizFormMold && React.createElement(SupplierArizFormModal, {
+      moldId: arizFormMold,
+      busy: busyMoldId === arizFormMold,
+      onSubmit: function (payload) { submitAriz(arizFormMold, payload); },
+      onClose: function () { setArizFormMold(null); }
+    })
+  );
+}
+function SupplierArizFormModal(_refSAF) {
+  var moldId = _refSAF.moldId, busy = _refSAF.busy, onSubmit = _refSAF.onSubmit, onClose = _refSAF.onClose;
+  var _cav1 = useState(""), _cav2 = _slicedToArray(_cav1, 2), cavityNo = _cav2[0], setCavityNo = _cav2[1];
+  var _desc1 = useState(""), _desc2 = _slicedToArray(_desc1, 2), description = _desc2[0], setDescription = _desc2[1];
+  var _items1 = useState([{ op: "", price: "" }]), _items2 = _slicedToArray(_items1, 2), items = _items2[0], setItems = _items2[1];
+
+  var updItem = function (i, k, v) {
+    setItems(function (p) { return p.map(function (it, idx) { return idx === i ? _objectSpread(_objectSpread({}, it), {}, _defineProperty({}, k, v)) : it; }); });
+  };
+  var addItem = function () { setItems(function (p) { return p.concat([{ op: "", price: "" }]); }); };
+  var removeItem = function (i) { setItems(function (p) { return p.filter(function (_, idx) { return idx !== i; }); }); };
+  var total = items.reduce(function (s, it) { return s + (parseFloat(it.price) || 0); }, 0);
+
+  var submit = function () {
+    if (!description.trim()) { alert("Açıklama zorunludur!"); return; }
+    var cleanItems = items.filter(function (it) { return it.op.trim() && it.price !== ""; }).map(function (it) { return { op: it.op.trim(), price: parseFloat(it.price) || 0 }; });
+    if (cleanItems.length === 0) { alert("En az bir işlem/fiyat satırı girin!"); return; }
+    onSubmit({ cavity_no: cavityNo.trim(), description: description.trim(), teklif_items: cleanItems });
+  };
+
+  return React.createElement("div", {
+    style: { position: "fixed", inset: 0, background: "rgba(15,32,68,.55)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 },
+    onClick: function (e) { if (e.target === e.currentTarget) onClose(); }
+  },
+    React.createElement("div", { style: { background: "#fff", borderRadius: 16, maxWidth: 520, width: "100%", maxHeight: "88vh", overflow: "auto", padding: 24 } },
+      React.createElement("h3", { style: { fontSize: 16, fontWeight: 800, color: "#0f2044", marginBottom: 14 } }, "🚨 Arıza Bildir / Teklif Ver — " + moldId),
+      React.createElement("div", { className: "form-group" },
+        React.createElement("label", { className: "form-label" }, "Göz Numarası (opsiyonel)"),
+        React.createElement("input", { className: "form-input", value: cavityNo, onChange: function (e) { setCavityNo(e.target.value); } })
+      ),
+      React.createElement("div", { className: "form-group" },
+        React.createElement("label", { className: "form-label" }, "Açıklama *"),
+        React.createElement("textarea", {
+          className: "form-input", style: { resize: "vertical", minHeight: 70 }, value: description,
+          onChange: function (e) { setDescription(e.target.value); }, placeholder: "Arızanın tespiti ve yapılması gereken işlemler..."
+        })
+      ),
+      React.createElement("div", { className: "form-group" },
+        React.createElement("label", { className: "form-label" }, "Kırılımlı Fiyat Teklifi *"),
+        items.map(function (it, i) {
+          return React.createElement("div", { key: i, style: { display: "flex", gap: 8, marginBottom: 8, alignItems: "center" } },
+            React.createElement("input", {
+              className: "form-input", style: { flex: 2 }, placeholder: "İşlem (örn: Kaynak onarımı)",
+              value: it.op, onChange: function (e) { updItem(i, "op", e.target.value); }
+            }),
+            React.createElement("input", {
+              className: "form-input", style: { flex: 1 }, type: "number", placeholder: "₺",
+              value: it.price, onChange: function (e) { updItem(i, "price", e.target.value); }
+            }),
+            items.length > 1 && React.createElement("button", {
+              type: "button", onClick: function () { removeItem(i); },
+              style: { background: "#fff0f0", color: "#c62828", border: "none", borderRadius: 6, padding: "8px 10px", cursor: "pointer" }
+            }, "✕")
+          );
+        }),
+        React.createElement("button", {
+          type: "button", onClick: addItem,
+          style: { background: "#f0f4ff", color: "#1565c0", border: "none", borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 700, cursor: "pointer" }
+        }, "+ Satır Ekle"),
+        React.createElement("div", { style: { textAlign: "right", fontWeight: 800, fontSize: 14, color: "#0f2044", marginTop: 10 } }, "Toplam: ₺" + total.toLocaleString("tr-TR"))
+      ),
+      React.createElement("div", { style: { display: "flex", gap: 10, marginTop: 18 } },
+        React.createElement("button", {
+          disabled: busy, onClick: onClose,
+          style: { flex: 1, background: "#fff", border: "1px solid #dde3ea", color: "#4a5568", fontWeight: 700, padding: "11px 0", borderRadius: 8, cursor: "pointer" }
+        }, "İptal"),
+        React.createElement("button", {
+          disabled: busy, onClick: submit,
+          style: { flex: 1, background: "#c62828", color: "#fff", border: "none", fontWeight: 700, padding: "11px 0", borderRadius: 8, cursor: busy ? "not-allowed" : "pointer" }
+        }, busy ? "⏳..." : "📤 Teklifi Gönder")
+      )
+    )
+  );
+}
 function App() {
   var _useState = useState(initApp),
     _useState2 = _slicedToArray(_useState, 2),
@@ -841,7 +1112,8 @@ function App() {
           name: (u.name||"").trim(),
           role: u.role,
           username: (u.user||"").trim(),
-          password: u.pass || "1234"
+          password: u.pass || "1234",
+          supplier_name: u.role === "tedarikci" ? (u.supplier_name || "").trim() : undefined
         })
       }).then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
       .then(function(res) {
@@ -870,7 +1142,8 @@ function App() {
               name: (updated.name||"").trim(),
               role: updated.role,
               username: (updated.user||"").trim(),
-              password: updated.pass && updated.pass !== "" ? updated.pass : undefined
+              password: updated.pass && updated.pass !== "" ? updated.pass : undefined,
+              supplier_name: updated.role === "tedarikci" ? (updated.supplier_name || "").trim() : undefined
             })
           }).then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
           .then(function(res){
@@ -905,7 +1178,7 @@ function App() {
   // ── LOGIN SONRASI STATE YÜKLEME ──
   // user set edildiğinde sunucudan güncel state çek
   useEffect(function() {
-    if (!user || !CMMS_TOKEN) return;
+    if (!user || !CMMS_TOKEN || user.role === "tedarikci") return;
     _apiLoaded = false; // persist'i engelle
     apiGet("/api/state").then(function(state) {
       if (state && state.molds) {
@@ -928,7 +1201,7 @@ function App() {
   // halde kendi gönderdiğimiz değişikliğin yayınını geri alıp persist()'i tekrar
   // tetikleyen bir eko döngüsü oluşabilir.
   useEffect(function() {
-    if (!user || !CMMS_TOKEN) return;
+    if (!user || !CMMS_TOKEN || user.role === "tedarikci") return;
     var proto = window.location.protocol === "https:" ? "wss:" : "ws:";
     var ws;
     try {
@@ -977,24 +1250,28 @@ function App() {
     var savedToken = localStorage.getItem("cmms_token");
     if (!savedToken || user) { setAutoLogging(false); return; }
     CMMS_TOKEN = savedToken;
+    var payload;
+    try { payload = JSON.parse(atob(savedToken.split(".")[1])); }
+    catch(e) { localStorage.removeItem("cmms_token"); CMMS_TOKEN = null; setAutoLogging(false); return; }
+    // Tedarikçi rolü genel /api/state'e HİÇ erişemez (sadece kendi kalıplarını
+    // gören dar kapsamlı /api/supplier/* uçlarını kullanır) — token geçerliliği
+    // burada değil, SupplierPortal kendi ilk isteğinde doğrular.
+    if (payload.role === "tedarikci") {
+      setUser({ id: payload.id, name: payload.name, role: payload.role, username: payload.username });
+      setAutoLogging(false);
+      return;
+    }
     fetch("/api/state", { headers: { "Authorization": "Bearer " + savedToken } })
       .then(function(r) {
         if (r.ok) return r.json();
         throw new Error("token geçersiz");
       })
       .then(function(state) {
-        // Token geçerli — kullanıcı bilgisini token'dan çöz
-        try {
-          var payload = JSON.parse(atob(savedToken.split(".")[1]));
-          setUser({ id: payload.id, name: payload.name, role: payload.role, username: payload.username });
-          if (state && state.molds) {
-            setData(function(prev) { return Object.assign({}, prev, state); });
-          }
-          _apiLoaded = true;
-        } catch(e) {
-          localStorage.removeItem("cmms_token");
-          CMMS_TOKEN = null;
+        setUser({ id: payload.id, name: payload.name, role: payload.role, username: payload.username });
+        if (state && state.molds) {
+          setData(function(prev) { return Object.assign({}, prev, state); });
         }
+        _apiLoaded = true;
         setAutoLogging(false);
       })
       .catch(function() {
@@ -1020,6 +1297,20 @@ function App() {
   if (user.must_change_password) return /*#__PURE__*/React.createElement(PasswordChangeModal, {
     forced: true,
     onDone: function() { setUser(function(u) { return _objectSpread(_objectSpread({}, u), {}, { must_change_password: false }); }); }
+  });
+  // Tedarikçi rolü tamamen ayrı, dar kapsamlı bir portala yönlendirilir —
+  // ana uygulamanın state'ine (data), Sidebar'a, diğer sayfalara hiç erişimi
+  // yok. Kendi verisini yalnızca /api/supplier/* uçlarından çeker.
+  if (user.role === "tedarikci") return /*#__PURE__*/React.createElement(SupplierPortal, {
+    user: user,
+    onLogout: function onLogout() {
+      if (CMMS_TOKEN) {
+        fetch("/api/logout", { method: "POST", headers: apiHeaders() }).catch(function(){});
+        CMMS_TOKEN = null;
+        localStorage.removeItem("cmms_token");
+      }
+      setUser(null);
+    }
   });
   var ctx = {
     data: data,
@@ -1132,7 +1423,8 @@ var PT = {
     matrix: "Teknisyen Matrisi",
     molds: "Kalıplar",
     reports: "Raporlar",
-    critical: "Kritik Analiz"
+    critical: "Kritik Analiz",
+    teklifler: "Tedarikçi Teklifleri"
   },
   op: {
     report: "Arıza Bildirimi",
@@ -1223,6 +1515,13 @@ function LoginScreen(_ref) {
       // Token sakla
       CMMS_TOKEN=result.token;
       localStorage.setItem("cmms_token",result.token);
+      // Tedarikçi rolü genel /api/state'e HİÇ erişemez — sadece kendi
+      // kalıplarını gören dar kapsamlı /api/supplier/* uçlarını kullanır.
+      if (result.user && result.user.role === "tedarikci") {
+        setLoading(false);
+        onLogin(_objectSpread(_objectSpread({}, result.user), {}, { must_change_password: !!result.must_change_password }));
+        return;
+      }
       // API'den state çek
       var state=await apiGet("/api/state");
       if(state && state.molds){
@@ -1394,6 +1693,11 @@ function Sidebar(_ref2) {
       l: "Doğrulama Bekleyen",
       b: wos.filter(function (w) { return w.status === "TAMAMLANDI"; }).length || null
     }, {
+      id: "teklifler",
+      ico: "🚚",
+      l: "Tedarikçi Teklifleri",
+      b: wos.filter(function (w) { return w.status === "TEKLIF_BEKLIYOR"; }).length || null
+    }, {
       id: "matrix",
       ico: "👥",
       l: "Teknisyen Matrisi"
@@ -1480,14 +1784,16 @@ function Sidebar(_ref2) {
     leader: "#42a5f5",
     op: "#66bb6a",
     tech: "#ef5350",
-    kalite: "#ab47bc"
+    kalite: "#ab47bc",
+    tedarikci: "#607d8b"
   };
   var RL = {
     admin: "Admin",
     leader: "Lider",
     op: "Operatör",
     tech: "Teknisyen",
-    kalite: "Kalite"
+    kalite: "Kalite",
+    tedarikci: "Tedarikçi"
   };
   return /*#__PURE__*/React.createElement("div", {
     className: "sidebar"
@@ -3891,14 +4197,16 @@ function AdminPanel(_ref19) {
         leader: "tag-purple",
         tech: "tag-green",
         op: "tag-orange",
-        kalite: "tag-teal"
+        kalite: "tag-teal",
+        tedarikci: "tag-gray"
       };
       var RL = {
         admin: "Admin",
         leader: "Lider",
         tech: "Teknisyen",
         op: "Operatör",
-        kalite: "Kalite"
+        kalite: "Kalite",
+        tedarikci: "Tedarikçi"
       };
       return /*#__PURE__*/React.createElement("tr", {
         key: u.id
@@ -4086,7 +4394,9 @@ function AdminPanel(_ref19) {
       op: ["report", "history"],
       kalite: ["qapprove", "qhistory"]
     };
-    var nonAdminUsers = (data.users || []).filter(function(u) { return u.role !== "admin"; });
+    // Tedarikçi rolü bu sayfanın (custom_pages/menü) sisteminin dışında —
+    // kendi ayrı portalını kullanır, buradaki izin değişiklikleri onu etkilemez.
+    var nonAdminUsers = (data.users || []).filter(function(u) { return u.role !== "admin" && u.role !== "tedarikci"; });
 
     return React.createElement("div", { className: "anim" },
       React.createElement("h2", { style: { fontSize: 18, fontWeight: 800, color: "#0f2044", marginBottom: 4 } }, "🔑 Yetki Yönetimi"),
@@ -5270,6 +5580,62 @@ function LeaderPanel(_ref24) {
                   entity_type: "wo", entity_id: wo.id, detail: wo.id + " işe geri gönderildi: " + why.trim() });
               }
             }, "↩️ Reddet, İşe Geri Gönder")
+          )
+        );
+      })
+    );
+  }
+  if (page === "teklifler") {
+    var _teklifler = (wos || []).filter(function(w) { return w.status === "TEKLIF_BEKLIYOR"; });
+    return React.createElement("div", { className: "anim" },
+      React.createElement("h2", { style: { fontSize: 16, fontWeight: 800, color: "var(--brand-primary)", marginBottom: 4 } }, "🚚 Tedarikçi Teklifleri (" + _teklifler.length + ")"),
+      React.createElement("p", { style: { fontSize: 12, color: "#6b7fa3", marginBottom: 14 } },
+        "Tedarikçide bulunan kalıplar için gelen arıza/tadilat teklifleri. Onaylarsanız tedarikçi işi kendisi yapar (numune gönderip tamamladığında kalite onayına gider). Reddederseniz kalıp fiziksel olarak size döner, durumu Bakımda'ya alınır ve iç arıza havuzuna düşer."),
+      _teklifler.length === 0 && React.createElement("div", { className: "card", style: { textAlign: "center", padding: 40, color: "#6b7fa3" } }, "Onay bekleyen teklif yok 👍"),
+      _teklifler.map(function(wo) {
+        var mold = (data.molds || []).find(function(m) { return m.id === wo.mold_id; });
+        var busyKey = "teklif_" + wo.id;
+        return React.createElement("div", { key: wo.id, className: "card", style: { marginBottom: 12, borderLeft: "4px solid #8d6e00" } },
+          React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 8 } },
+            React.createElement("div", null,
+              React.createElement("span", {
+                style: { cursor: "pointer", fontWeight: 800, fontSize: 14, color: "var(--brand-primary)" },
+                onClick: function() { return openMold && openMold(wo.mold_id); }
+              }, wo.mold_id),
+              wo.cavity_no && React.createElement("span", { style: { marginLeft: 8, fontSize: 10, background: "#f0f4ff", color: "#1565c0", padding: "2px 8px", borderRadius: 4, fontWeight: 700 } }, "Göz " + wo.cavity_no)),
+            React.createElement("span", { style: { fontSize: 10, color: "#9aa5b4" } }, wo.supplier_name || "")),
+          React.createElement("div", { style: { fontSize: 12, color: "#2d3748", marginBottom: 8 } }, wo.description || ""),
+          React.createElement("div", { style: { fontSize: 11, color: "#6b7fa3", marginBottom: 10 } },
+            wo.mold_id + (mold ? " — " + (mold.part_name || "").slice(0, 30) : "")),
+          React.createElement("div", { style: { background: "#fffdf5", border: "1px solid #ffe082", borderRadius: 8, padding: 10, marginBottom: 12 } },
+            (wo.teklif_items || []).map(function(it, i) {
+              return React.createElement("div", { key: i, style: { display: "flex", justifyContent: "space-between", fontSize: 12, color: "#4a5568", padding: "3px 0" } },
+                React.createElement("span", null, it.op), React.createElement("span", null, "₺" + it.price.toLocaleString("tr-TR")));
+            }),
+            React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, fontWeight: 800, color: "#8d6e00", marginTop: 6, paddingTop: 6, borderTop: "1px solid #ffe082" } },
+              React.createElement("span", null, "Toplam Teklif"), React.createElement("span", null, "₺" + (wo.teklif_total || 0).toLocaleString("tr-TR")))
+          ),
+          React.createElement("div", { style: { display: "flex", gap: 10, flexWrap: "wrap" } },
+            React.createElement("button", {
+              className: "btn", style: { background: "#1a6b3c", color: "#fff", fontWeight: 800, padding: "10px 20px" },
+              onClick: function() {
+                if (!window.confirm("Teklifi onaylıyor musunuz? Tedarikçi işe başlayabilecek.")) return;
+                fetch("/api/workorders/" + wo.id + "/teklif-approve", { method: "POST", headers: apiHeaders() })
+                  .then(function(r) { return r.json(); })
+                  .then(function(res) { if (!res.ok) alert("❌ " + (res.error || "Onaylanamadı")); });
+              }
+            }, "✅ Teklifi Onayla"),
+            React.createElement("button", {
+              className: "btn", style: { background: "#c62828", color: "#fff", fontWeight: 800, padding: "10px 20px" },
+              onClick: function() {
+                var why = window.prompt("Reddetme nedeni (opsiyonel):") || "";
+                if (!window.confirm("Reddediyor musunuz? Kalıp durumu 'Bakımda'ya alınacak ve iş, iç arıza havuzuna düşecek — kalıbın fiziksel olarak size dönmesi gerekir.")) return;
+                fetch("/api/workorders/" + wo.id + "/teklif-reject", {
+                  method: "POST", headers: apiHeaders(), body: JSON.stringify({ reason: why })
+                }).then(function(r) { return r.json(); })
+                  .then(function(res) { if (!res.ok) alert("❌ " + (res.error || "Reddedilemedi")); });
+              }
+            }, "↩️ Reddet, Kalıp Bize Dönsün")
           )
         );
       })
@@ -8124,7 +8490,23 @@ function UserFormModal(_ref31) {
     value: "op"
   }, "Operat\xF6r"), /*#__PURE__*/React.createElement("option", {
     value: "kalite"
-  }, "Kalite")))), /*#__PURE__*/React.createElement("div", {
+  }, "Kalite"), /*#__PURE__*/React.createElement("option", {
+    value: "tedarikci"
+  }, "Tedarikçi"))), f.role === "tedarikci" && /*#__PURE__*/React.createElement("div", {
+    className: "form-group"
+  }, /*#__PURE__*/React.createElement("label", {
+    className: "form-label"
+  }, "Tedarikçi Kimliği"), /*#__PURE__*/React.createElement("input", {
+    className: "form-input",
+    value: f.supplier_name || "",
+    onChange: function onChange(e) { return set("supplier_name", e.target.value); },
+    placeholder: "Örn: Ermold Kalıp",
+    list: "supplier-name-datalist"
+  }), /*#__PURE__*/React.createElement("datalist", {
+    id: "supplier-name-datalist"
+  }, DEFAULT_SUPPLIERS.map(function (s) { return /*#__PURE__*/React.createElement("option", { key: s, value: s }); })), /*#__PURE__*/React.createElement("div", {
+    className: "form-hint"
+  }, "Kalıp kartındaki \"Transfer Edilen Firma\" adıyla BİREBİR eşleşmeli — bu kullanıcı sadece bu isimle transfer edilmiş kalıpları görecek."))), /*#__PURE__*/React.createElement("div", {
     className: "modal-foot"
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn btn-ghost",
@@ -9065,7 +9447,8 @@ function AnalyticsPanel(_ref32) {
       leader: "Lider",
       tech: "Teknisyen",
       op: "Operatör",
-      kalite: "Kalite"
+      kalite: "Kalite",
+      tedarikci: "Tedarikçi"
     };
     return /*#__PURE__*/React.createElement("div", {
       key: t.id,
@@ -9552,7 +9935,8 @@ function AdminDashboardV14(_ref43) {
       leader: "Lider",
       tech: "Teknisyen",
       op: "Operatör",
-      kalite: "Kalite"
+      kalite: "Kalite",
+      tedarikci: "Tedarikçi"
     };
     var allJobs = activeList.concat(waitingList).concat(assignedList);
     return /*#__PURE__*/React.createElement("div", {
@@ -15528,7 +15912,8 @@ function AuditTrailPage(_ref77) {
     leader: "Lider",
     tech: "Teknisyen",
     op: "Operatör",
-    kalite: "Kalite"
+    kalite: "Kalite",
+    tedarikci: "Tedarikçi"
   };
   return /*#__PURE__*/React.createElement("div", {
     className: "anim"
@@ -17532,7 +17917,8 @@ function AdvancedReports(_ref) {
     { id: "person", ico: "👤", label: "Kişi Bazlı Performans" },
     { id: "recurring", ico: "🔁", label: "Tekrar Eden Arızalar" },
     { id: "shift", ico: "🕐", label: "Vardiya Analizi" },
-    { id: "cost", ico: "💰", label: "Maliyet Analizi" }
+    { id: "cost", ico: "💰", label: "Maliyet Analizi" },
+    { id: "supplier", ico: "🚚", label: "Tedarikçi Performansı" }
   ];
 
   return React.createElement("div", { className: "anim" },
@@ -17909,6 +18295,86 @@ function ReportContent(_ref) {
           )
         : React.createElement("div", { className: "card", style: { textAlign: "center", padding: 40, color: "#9aa5b4" } },
             "Henüz maliyet verisi girilmemiş. İş emri tamamlanırken işçilik/parça maliyeti girildiğinde burada görünecek.")
+    );
+  }
+
+  // TEDARİKÇİ PERFORMANSI — dış arıza bildirimleri (mail ile gelen, tedarikçide/
+  // müşteride oluşan arızalar) tedarikçi bazında gruplanır. Ayrıca şu an hangi
+  // tedarikçide kaç kalıp olduğu (transfer_to) da gösterilir.
+  if (type === "supplier") {
+    var disAriz = wos.filter(function(w) { return w.type === "DIŞ_ARIZ"; });
+    var bySupplier = {};
+    disAriz.forEach(function(w) {
+      var name = w.supplier_name || "Belirtilmemiş";
+      if (!bySupplier[name]) bySupplier[name] = { name: name, count: 0, weRepaired: 0, closedCount: 0, mttrSum: 0, mttrCount: 0, cost: 0, lastDate: "" };
+      var s = bySupplier[name];
+      s.count++;
+      if (w.we_will_repair) s.weRepaired++;
+      if (w.status === "KAPATILDI") {
+        s.closedCount++;
+        if (w.started_at && w.closed_at) { s.mttrSum += _rptMin(w.started_at, w.closed_at); s.mttrCount++; }
+      }
+      s.cost += (w.cost_labor || 0) + (w.cost_parts || 0);
+      if (!s.lastDate || String(w.created_at) > s.lastDate) s.lastDate = w.created_at;
+    });
+    var moldsAtSupplier = {};
+    molds.filter(function(m) { return m.status === "Transfer" && m.transfer_to; }).forEach(function(m) {
+      moldsAtSupplier[m.transfer_to] = (moldsAtSupplier[m.transfer_to] || 0) + 1;
+    });
+    var supplierRows = Object.values(bySupplier).sort(function(a, b) { return b.count - a.count; });
+    var totalDisAriz = disAriz.length;
+    var totalWeRepaired = disAriz.filter(function(w) { return w.we_will_repair; }).length;
+    var supplierClosedWithMttr = disAriz.filter(function(w) { return w.status === "KAPATILDI" && w.started_at && w.closed_at; });
+    var avgSupplierMttr = supplierClosedWithMttr.length > 0
+      ? supplierClosedWithMttr.reduce(function(s, w) { return s + _rptMin(w.started_at, w.closed_at); }, 0) / supplierClosedWithMttr.length
+      : 0;
+    var distinctSupplierCount = Object.keys(bySupplier).length;
+    return React.createElement("div", null,
+      React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(160px,1fr))", gap: 12, marginBottom: 16 } },
+        React.createElement(RptKPI, { ico: "📧", val: totalDisAriz, label: "Dış Arıza Bildirimi", color: "#e65100" }),
+        React.createElement(RptKPI, { ico: "🏢", val: distinctSupplierCount, label: "Bildirim Yapan Tedarikçi", color: "#1565c0" }),
+        React.createElement(RptKPI, { ico: "⏱", val: avgSupplierMttr > 0 ? _fmtDur(avgSupplierMttr) : "—", label: "Ort. Çözüm Süresi", color: "#7b1fa2" }),
+        React.createElement(RptKPI, { ico: "🔧", val: totalDisAriz > 0 ? Math.round(totalWeRepaired / totalDisAriz * 100) + "%" : "—", label: "Bizim Onardığımız Oran", sub: "Kalan: tedarikçi kendi onardı", color: "#1a6b3c" })
+      ),
+      supplierRows.length === 0
+        ? React.createElement("div", { className: "card", style: { textAlign: "center", padding: 40, color: "#9aa5b4" } },
+            "Henüz dış arıza bildirimi kaydedilmemiş. Lider/admin \"İş Emri Oluştur\" ekranından \"Dış Arıza\" tipini seçerek tedarikçiden gelen bildirimi kaydedebilir.")
+        : React.createElement("div", { className: "card" },
+            React.createElement("h3", { style: { fontSize: 14, fontWeight: 800, marginBottom: 6, color: "#0f2044" } }, "🚚 Tedarikçi Bazında Dış Arıza Performansı"),
+            React.createElement("p", { style: { fontSize: 11, color: "#6b7fa3", marginBottom: 14 } }, "Hangi tedarikçiden ne sıklıkta arıza bildirimi geliyor, çözüm ne kadar sürüyor ve şu an kaç kalıp o tedarikçide"),
+            React.createElement("div", { className: "tbl-wrap" },
+              React.createElement("table", null,
+                React.createElement("thead", null, React.createElement("tr", null,
+                  ["Tedarikçi", "Bildirim", "Açık", "Ort. Çözüm Süresi", "Biz Onardık", "Toplam Maliyet", "Şu An Elimizde Olmayan Kalıp", "Son Bildirim"].map(function(h) {
+                    return React.createElement("th", { key: h }, h);
+                  }))),
+                React.createElement("tbody", null, supplierRows.map(function(s) {
+                  var avgM = s.mttrCount > 0 ? s.mttrSum / s.mttrCount : 0;
+                  var openCount = s.count - s.closedCount;
+                  return React.createElement("tr", { key: s.name },
+                    React.createElement("td", null, React.createElement("strong", null, s.name)),
+                    React.createElement("td", null, s.count),
+                    React.createElement("td", null, openCount > 0 ? React.createElement("span", { className: "tag tag-orange" }, openCount) : "—"),
+                    React.createElement("td", null, avgM > 0 ? _fmtDur(avgM) : "—"),
+                    React.createElement("td", null, s.count > 0 ? Math.round(s.weRepaired / s.count * 100) + "%" : "—"),
+                    React.createElement("td", null, s.cost > 0 ? "₺" + Math.round(s.cost).toLocaleString() : "—"),
+                    React.createElement("td", null, moldsAtSupplier[s.name] || "—"),
+                    React.createElement("td", { style: { fontSize: 11, color: "#6b7fa3" } }, String(s.lastDate || "").slice(0, 10))
+                  );
+                }))
+              )
+            )
+          ),
+      Object.keys(moldsAtSupplier).length > 0 && React.createElement("div", { className: "card", style: { marginTop: 16 } },
+        React.createElement("h3", { style: { fontSize: 14, fontWeight: 800, marginBottom: 6, color: "#0f2044" } }, "📍 Şu An Tedarikçilerde Bulunan Kalıplar"),
+        React.createElement("p", { style: { fontSize: 11, color: "#6b7fa3", marginBottom: 14 } }, "Dış arıza geçmişi olmasa bile, transfer durumundaki tüm kalıplar tedarikçi bazında burada görünür"),
+        React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: 8 } },
+          Object.keys(moldsAtSupplier).sort(function(a, b) { return moldsAtSupplier[b] - moldsAtSupplier[a]; }).map(function(name) {
+            return React.createElement("span", { key: name, style: { padding: "6px 12px", borderRadius: 20, fontSize: 11, fontWeight: 700, background: "#f3e5f5", color: "#7b1fa2" } },
+              name + " — " + moldsAtSupplier[name] + " kalıp");
+          })
+        )
+      )
     );
   }
 

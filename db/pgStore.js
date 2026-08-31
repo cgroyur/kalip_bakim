@@ -61,8 +61,11 @@ function createPgStore(pool) {
       await pool.query(`CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT NOT NULL, username TEXT NOT NULL,
         password_hash TEXT NOT NULL, active BOOLEAN NOT NULL DEFAULT true,
-        must_change_password BOOLEAN NOT NULL DEFAULT true
+        must_change_password BOOLEAN NOT NULL DEFAULT true, supplier_name TEXT
       )`);
+      // Tablo daha önce supplier_name olmadan oluşturulmuş olabilir (mevcut
+      // canlı veritabanı) — idempotent ALTER ile geriye dönük uyumluluk.
+      await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS supplier_name TEXT`);
       await pool.query(`CREATE TABLE IF NOT EXISTS audit_log (
         id BIGSERIAL PRIMARY KEY, ts TEXT, user_id TEXT, user_name TEXT, role TEXT,
         action TEXT, entity_type TEXT, entity_id TEXT, detail TEXT
@@ -127,9 +130,9 @@ function createPgStore(pool) {
         await client.query("DELETE FROM users");
         for (const u of users) {
           await client.query(
-            `INSERT INTO users (id,name,role,username,password_hash,active,must_change_password)
-             VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-            [u.id, u.name, u.role, u.username, u.password_hash, !!u.active, !!u.must_change_password]
+            `INSERT INTO users (id,name,role,username,password_hash,active,must_change_password,supplier_name)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+            [u.id, u.name, u.role, u.username, u.password_hash, !!u.active, !!u.must_change_password, u.supplier_name ?? null]
           );
         }
         await client.query("COMMIT");

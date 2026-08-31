@@ -15,7 +15,7 @@ function validate(schema) {
   };
 }
 
-const ROLE_ENUM = z.enum(["admin", "leader", "tech", "op", "kalite"]);
+const ROLE_ENUM = z.enum(["admin", "leader", "tech", "op", "kalite", "tedarikci"]);
 
 const loginSchema = z.object({
   username: z.string().min(1, "Kullanıcı adı gerekli"),
@@ -33,6 +33,7 @@ const createUserSchema = z.object({
   role: ROLE_ENUM,
   username: z.string().min(1),
   password: z.string().min(1),
+  supplier_name: z.string().max(120).optional(),
 });
 
 const updateUserSchema = z.object({
@@ -40,6 +41,7 @@ const updateUserSchema = z.object({
   role: ROLE_ENUM.optional(),
   username: z.string().min(1).optional(),
   password: z.string().min(1).optional(),
+  supplier_name: z.string().max(120).optional(),
 });
 
 // İş emri (work order) alan seti çok geniş (RCA analizi, maliyet, tip-özel alanlar vb.)
@@ -99,6 +101,33 @@ const qualitySettingsSchema = z.object({
   trigger_fail_codes: z.array(z.string()).optional(),
 });
 
+// Tedarikçi portalı — dar kapsamlı, sadece kendi kalıpları için PM açma/kapama.
+const supplierPmCreateSchema = z.object({
+  mold_id: z.string().min(1, "Kalıp zorunlu"),
+});
+const supplierPmCompleteSchema = z.object({
+  note: z.string().max(2000).optional(),
+});
+
+// Tedarikçi arıza bildirimi + teklif — kırılımlı fiyat (işlem + fiyat) satırları.
+const teklifItemSchema = z.object({
+  op: z.string().min(1).max(200),
+  price: z.number().nonnegative(),
+});
+const supplierArizCreateSchema = z.object({
+  mold_id: z.string().min(1, "Kalıp zorunlu"),
+  cavity_no: z.string().max(50).optional(),
+  description: z.string().min(1, "Açıklama zorunlu").max(4000),
+  teklif_items: z.array(teklifItemSchema).min(1, "En az bir işlem/fiyat satırı gerekli"),
+});
+const supplierSampleSentSchema = z.object({}).passthrough();
+const supplierArizCompleteSchema = z.object({
+  note: z.string().max(2000).optional(),
+});
+const teklifRejectSchema = z.object({
+  reason: z.string().max(2000).optional(),
+});
+
 module.exports = {
   validate,
   loginSchema,
@@ -113,4 +142,10 @@ module.exports = {
   stateSchema,
   attachmentSchema,
   qualitySettingsSchema,
+  supplierPmCreateSchema,
+  supplierPmCompleteSchema,
+  supplierArizCreateSchema,
+  supplierSampleSentSchema,
+  supplierArizCompleteSchema,
+  teklifRejectSchema,
 };

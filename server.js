@@ -41,7 +41,8 @@ const { WebSocketServer } = require("ws");
 const {
   validate, loginSchema, changePasswordSchema, createUserSchema, updateUserSchema,
   workOrderSchema, tvClaimSchema, auditSchema, systemResetSchema, resetSeedSchema, stateSchema,
-  attachmentSchema, qualitySettingsSchema,
+  attachmentSchema, qualitySettingsSchema, supplierPmCreateSchema, supplierPmCompleteSchema,
+  supplierArizCreateSchema, supplierSampleSentSchema, supplierArizCompleteSchema, teklifRejectSchema,
 } = require("./validation");
 
 const app  = express();
@@ -215,7 +216,10 @@ function setupWebSocket(httpServer) {
         const url = new URL(info.req.url, "http://localhost");
         const token = url.searchParams.get("token");
         if (!token) return callback(false, 401, "Token gerekli");
-        jwt.verify(token, JWT_SECRET);
+        const payload = jwt.verify(token, JWT_SECRET);
+        // Tedarikçi rolü tüm sisteme yayın yapan bu genel WS kanalına asla
+        // bağlanamaz — portal kendi verisini yalnızca REST ile çeker.
+        if (payload.role === "tedarikci") return callback(false, 403, "Bu rol için erişilemez");
         callback(true);
       } catch(e) {
         callback(false, 401, "Geçersiz token");
@@ -325,6 +329,11 @@ app.use((req, res, next) => {
   next();
 });
 
+// Tedarikçi rolü portal-dışı hiçbir API'ye erişemez — tek tek route'ları
+// işaretlemek yerine burada TEK bir yerden, kaçırma riski olmadan uygulanır.
+// İzin verilen: kendi /api/supplier/* uçları + oturum/şifre kendi kendine
+// hizmet uçları (login zaten auth'suz, logout/change-password kendi hesabı içindir).
+const SUPPLIER_ALLOWED_PREFIXES = ["/api/supplier/", "/api/logout", "/api/change-password"];
 function auth(req, res, next) {
   const h = req.headers.authorization;
   if (!h?.startsWith("Bearer ")) return res.status(401).json({ error: "Token gerekli" });
@@ -334,6 +343,9 @@ function auth(req, res, next) {
     if (payload.sid && cur && cur.sid !== payload.sid) {
       return res.status(401).json({ error: "Bu hesap başka bir cihazdan açıldı. Oturumunuz sonlandırıldı.", session_takeover: true });
     }
+    if (payload.role === "tedarikci" && !SUPPLIER_ALLOWED_PREFIXES.some(p => req.path.startsWith(p))) {
+      return res.status(403).json({ error: "Bu rol için erişilemez" });
+    }
     req.user = payload; next();
   }
   catch { res.status(401).json({ error: "Geçersiz veya süresi dolmuş token" }); }
@@ -341,6 +353,15 @@ function auth(req, res, next) {
 function adminOnly(req, res, next) {
   if (req.user?.role !== "admin") return res.status(403).json({ error: "Sadece admin" });
   next();
+}
+function supplierOnly(req, res, next) {
+  if (req.user?.role !== "tedarikci") return res.status(403).json({ error: "Sadece tedarikçi" });
+  next();
+}
+async function getSupplierName(userId) {
+  const users = await store.getUsers();
+  const u = users.find(x => x.id === userId);
+  return (u && u.supplier_name) || null;
 }
 
 // ── AUTH ──
@@ -389,6 +410,9 @@ app.post("/api/logout", auth, async (req, res) => {
 
 // ── STATE ──
 app.get("/api/state", auth, async (req, res) => {
+  // Tedarikçi rolü tüm sistemi gören bu genel uca hiçbir zaman erişemez —
+  // frontend zaten bu isteği hiç göndermez, burası ikinci savunma katmanı.
+  if (req.user.role === "tedarikci") return res.status(403).json({ error: "Bu rol için erişilemez" });
   if (!(await store.hasState())) return res.json(null);
   const [molds, wos, extra, users, auditRecent] = await Promise.all([
     store.getMolds(), store.getWorkOrders(), store.getStateExtra(), store.getUsers(), store.getAuditLogRecent(2000),
@@ -439,6 +463,7 @@ app.post("/api/state", (req, res, next) => {
   }
   auth(req, res, next);
 }, validate(stateSchema), async (req, res) => {
+  if (req.user.role === "tedarikci") return res.status(403).json({ error: "Bu rol için erişilemez" });
   const { users, auditLog, deleted_wo_ids, molds: incomingMolds, wos: incomingWos, ...extra } = req.body;
 
   const serverMolds = await store.getMolds();
@@ -517,11 +542,11 @@ app.post("/api/state", (req, res, next) => {
 // ── KULLANICILAR ──
 app.get("/api/users", auth, adminOnly, async (req, res) => {
   const users = await store.getUsers();
-  res.json(users.map(u => ({ id:u.id, name:u.name, role:u.role, username:u.username, active:u.active })));
+  res.json(users.map(u => ({ id:u.id, name:u.name, role:u.role, username:u.username, active:u.active, supplier_name:u.supplier_name || null })));
 });
 
 app.post("/api/users", auth, adminOnly, validate(createUserSchema), async (req, res) => {
-  let { id, name, role, username, password } = req.body;
+  let { id, name, role, username, password, supplier_name } = req.body;
   if (String(password).length < MIN_PASSWORD_LEN)
     return res.status(400).json({ error:`Şifre en az ${MIN_PASSWORD_LEN} karakter olmalı` });
   username = String(username).trim();
@@ -536,14 +561,14 @@ app.post("/api/users", auth, adminOnly, validate(createUserSchema), async (req, 
   // Pasif (silinmiş) veya aynı id'li kayıt varsa üzerine yaz — username yeniden kullanılabilir
   users = users.filter(u => u.id !== id && u.username.toLowerCase() !== username.toLowerCase());
   // Admin başkası için şifre belirlediğinde ilk girişte değiştirme zorunluluğu
-  users.push({ id, name, role, username, password_hash: bcrypt.hashSync(password,10), active:true, must_change_password:true });
+  users.push({ id, name, role, username, password_hash: bcrypt.hashSync(password,10), active:true, must_change_password:true, supplier_name: supplier_name || null });
   await store.saveUsers(users);
   await addAudit(req.user.id, req.user.name, req.user.role, "Kullanıcı Eklendi", "user", id, `${name} (${role}) eklendi`);
   res.json({ ok: true });
 });
 
 app.put("/api/users/:id", auth, adminOnly, validate(updateUserSchema), async (req, res) => {
-  let { name, role, username, password } = req.body;
+  let { name, role, username, password, supplier_name } = req.body;
   if (password && String(password).length < MIN_PASSWORD_LEN)
     return res.status(400).json({ error:`Şifre en az ${MIN_PASSWORD_LEN} karakter olmalı` });
   username = username ? String(username).trim() : username;
@@ -556,7 +581,7 @@ app.put("/api/users/:id", auth, adminOnly, validate(updateUserSchema), async (re
     const clash = users.find(x => x.username.toLowerCase() === username.toLowerCase() && x.active);
     if (clash) return res.status(400).json({ error:"Bu kullanıcı adı zaten kullanılıyor" });
     users = users.filter(x => x.username.toLowerCase() !== username.toLowerCase());
-    users.push({ id: req.params.id, name, role, username, password_hash: bcrypt.hashSync(password,10), active:true, must_change_password:true });
+    users.push({ id: req.params.id, name, role, username, password_hash: bcrypt.hashSync(password,10), active:true, must_change_password:true, supplier_name: supplier_name || null });
     await store.saveUsers(users);
     await addAudit(req.user.id, req.user.name, req.user.role, "Kullanıcı Oluşturuldu (kurtarma)", "user", req.params.id, `${name} sunucuya kaydedildi`);
     return res.json({ ok: true, created: true });
@@ -564,6 +589,7 @@ app.put("/api/users/:id", auth, adminOnly, validate(updateUserSchema), async (re
   if (name) u.name=name;
   if (role) u.role=role;
   if (username) u.username=username;
+  if (supplier_name !== undefined) u.supplier_name = supplier_name || null;
   u.active = true;
   // Admin başkasının şifresini sıfırladığında ilk girişte değiştirme zorunluluğu
   if (password) { u.password_hash = bcrypt.hashSync(password,10); u.must_change_password = true; }
@@ -814,6 +840,210 @@ app.put("/api/system/quality-settings", auth, adminOnly, validate(qualitySetting
   await addAudit(req.user.id, req.user.name, req.user.role, "Kalite Onayı Ayarları Değiştirildi", "system", null,
     `enabled=${next.enabled}, tetikleyici arıza tipleri: ${next.trigger_fail_codes.join(", ") || "yok"}`);
   res.json({ ok: true, ...next });
+});
+
+// ── TEDARİKÇİ PORTALI ──
+// Dar kapsamlı, izole uç noktalar — tedarikci rolü GENEL /api/state'e hiç
+// erişemez (server.js'in başka hiçbir yerinde bu role izin verilmez). Bu
+// route'lar sadece kullanıcının kendi supplier_name'iyle eşleşen, o an
+// "Transfer" durumundaki kalıpları ve bu portaldan açtığı iş emirlerini
+// döndürür/değiştirir.
+app.get("/api/supplier/molds", auth, supplierOnly, async (req, res) => {
+  const supplierName = await getSupplierName(req.user.id);
+  if (!supplierName) return res.json([]);
+  const molds = await store.getMolds();
+  const mine = molds.filter(m => m.status === "Transfer" && m.transfer_to === supplierName);
+  res.json(mine.map(m => ({
+    id: m.id, part_name: m.part_name, transfer_date: m.transfer_date,
+    pm_counter: m.pm_counter || 0, pm_interval: m.pm_interval || 50000, last_pm_date: m.last_pm_date || null,
+  })));
+});
+
+app.get("/api/supplier/wos", auth, supplierOnly, async (req, res) => {
+  const supplierName = await getSupplierName(req.user.id);
+  if (!supplierName) return res.json([]);
+  const wos = await store.getWorkOrders();
+  const mine = wos.filter(w => w.source === "tedarikci_portali" && w.supplier_name === supplierName);
+  res.json(mine.map(w => ({
+    id: w.id, mold_id: w.mold_id, type: w.type, status: w.status,
+    created_at: w.created_at, started_at: w.started_at, closed_at: w.closed_at, description: w.description,
+    cavity_no: w.cavity_no, teklif_items: w.teklif_items, teklif_total: w.teklif_total, sample_sent: !!w.sample_sent,
+  })));
+});
+
+app.post("/api/supplier/pm", auth, supplierOnly, validate(supplierPmCreateSchema), async (req, res) => {
+  const supplierName = await getSupplierName(req.user.id);
+  if (!supplierName) return res.status(403).json({ error: "Tedarikçi kimliği tanımlı değil — admin ile iletişime geçin" });
+  const molds = await store.getMolds();
+  const mold = molds.find(m => m.id === req.body.mold_id);
+  if (!mold || mold.status !== "Transfer" || mold.transfer_to !== supplierName)
+    return res.status(403).json({ error: "Bu kalıp şu an sizde görünmüyor" });
+  const wos = await store.getWorkOrders();
+  const maxNum = wos.reduce((max, w) => {
+    const m = (w.id || "").match(/LG-(\d+)/);
+    return m ? Math.max(max, parseInt(m[1])) : max;
+  }, 0);
+  const id = "LG-" + String(maxNum + 1).padStart(3, "0");
+  const ts = nowStrTR();
+  const wo = {
+    id, mold_id: mold.id, type: "PM", status: "DEVAM_EDİYOR", priority: "NORMAL",
+    description: `${supplierName} tarafından tedarikçi portalından başlatılan planlı bakım`,
+    assigned: null, reported_by: req.user.id, created_at: ts, started_at: ts, closed_at: null,
+    source: "tedarikci_portali", supplier_name: supplierName,
+  };
+  await store.upsertWorkOrder(wo);
+  broadcast({ type: "wo_updated", wo });
+  await addAudit(req.user.id, supplierName, "tedarikci", "Tedarikçi Planlı Bakım Başlattı", "wo", id,
+    `${mold.id} için ${supplierName} planlı bakım başlattı`);
+  res.json({ ok: true, wo });
+});
+
+app.post("/api/supplier/pm/:id/complete", auth, supplierOnly, validate(supplierPmCompleteSchema), async (req, res) => {
+  const supplierName = await getSupplierName(req.user.id);
+  if (!supplierName) return res.status(403).json({ error: "Tedarikçi kimliği tanımlı değil — admin ile iletişime geçin" });
+  const wo = await store.getWorkOrderById(req.params.id);
+  if (!wo || wo.type !== "PM" || wo.source !== "tedarikci_portali" || wo.supplier_name !== supplierName)
+    return res.status(404).json({ error: "İş emri bulunamadı" });
+  if (wo.status === "KAPATILDI" || wo.status === "TAMAMLANDI")
+    return res.status(400).json({ error: "Bu iş zaten tamamlanmış" });
+  const ts = nowStrTR();
+  // Direkt KAPATILDI'ya geçmez — dışarıdan gelen "tamamlandı" bilgisine körü
+  // körüne güvenilmez; mevcut "Doğrulama Bekleyen İşler" kuyruğuna düşer,
+  // lider onayladığında gerçekten kapanır (bkz. LeaderPanel "verify" sayfası).
+  wo.status = "TAMAMLANDI";
+  wo.closed_at = null;
+  wo.description = (wo.description || "") + (req.body.note ? ` | Tedarikçi notu: ${req.body.note}` : "");
+  await store.upsertWorkOrder(wo);
+  broadcast({ type: "wo_updated", wo });
+  // Şot sayacı, iç PM akışıyla aynı şekilde tamamlanma anında sıfırlanır —
+  // onay kuyruğu WO'nun kapanışını, sayaç ise fiziksel bakımın yapıldığını izler.
+  const molds = await store.getMolds();
+  const mold = molds.find(m => m.id === wo.mold_id);
+  if (mold) {
+    mold.pm_counter = 0;
+    mold.last_pm_date = ts.split(" ")[0];
+    await store.upsertMold(mold);
+    broadcast({ type: "molds_replaced", molds });
+  }
+  await addAudit(req.user.id, supplierName, "tedarikci", "Tedarikçi Planlı Bakımı Tamamladı", "wo", wo.id,
+    `${wo.mold_id} için planlı bakım tamamlandı, lider onayı bekliyor`);
+  res.json({ ok: true, wo });
+});
+
+// ── Tedarikçi arıza bildirimi + teklif ──
+// Akış: tedarikçi arızayı ve kırılımlı fiyat teklifini girer (TEKLIF_BEKLIYOR)
+// → lider/admin onaylar (DEVAM_EDİYOR, tedarikçi çalışır) veya reddeder (kalıp
+// "Bakımda"ya alınır, iş iç arıza havuzuna düşer) → onaylanan işte tedarikçi
+// numune gönderdiğini işaretlemeden tamamlayamaz → tamamlanınca genel kalite
+// onayı ayarından BAĞIMSIZ olarak her zaman KALITE_BEKLIYOR'a düşer (tedarikçi
+// kendi yaptığı iş için ayrıca bir güven kontrolü).
+app.post("/api/supplier/ariz", auth, supplierOnly, validate(supplierArizCreateSchema), async (req, res) => {
+  const supplierName = await getSupplierName(req.user.id);
+  if (!supplierName) return res.status(403).json({ error: "Tedarikçi kimliği tanımlı değil — admin ile iletişime geçin" });
+  const molds = await store.getMolds();
+  const mold = molds.find(m => m.id === req.body.mold_id);
+  if (!mold || mold.status !== "Transfer" || mold.transfer_to !== supplierName)
+    return res.status(403).json({ error: "Bu kalıp şu an sizde görünmüyor" });
+  const wos = await store.getWorkOrders();
+  const maxNum = wos.reduce((max, w) => {
+    const m = (w.id || "").match(/LG-(\d+)/);
+    return m ? Math.max(max, parseInt(m[1])) : max;
+  }, 0);
+  const id = "LG-" + String(maxNum + 1).padStart(3, "0");
+  const ts = nowStrTR();
+  const teklifTotal = req.body.teklif_items.reduce((s, it) => s + it.price, 0);
+  const wo = {
+    id, mold_id: mold.id, type: "DIŞ_ARIZ", status: "TEKLIF_BEKLIYOR", priority: "NORMAL",
+    cavity_no: req.body.cavity_no || null,
+    description: req.body.description,
+    teklif_items: req.body.teklif_items, teklif_total: teklifTotal,
+    sample_sent: false,
+    assigned: null, reported_by: req.user.id, created_at: ts, started_at: null, closed_at: null,
+    source: "tedarikci_portali", supplier_name: supplierName,
+  };
+  await store.upsertWorkOrder(wo);
+  broadcast({ type: "wo_updated", wo });
+  await addAudit(req.user.id, supplierName, "tedarikci", "Tedarikçi Teklifi Gönderildi", "wo", id,
+    `${mold.id} için arıza bildirdi, teklif tutarı ₺${teklifTotal.toLocaleString("tr-TR")}, onay bekliyor`);
+  res.json({ ok: true, wo });
+});
+
+app.post("/api/supplier/ariz/:id/sample-sent", auth, supplierOnly, validate(supplierSampleSentSchema), async (req, res) => {
+  const supplierName = await getSupplierName(req.user.id);
+  if (!supplierName) return res.status(403).json({ error: "Tedarikçi kimliği tanımlı değil — admin ile iletişime geçin" });
+  const wo = await store.getWorkOrderById(req.params.id);
+  if (!wo || wo.source !== "tedarikci_portali" || wo.supplier_name !== supplierName)
+    return res.status(404).json({ error: "İş emri bulunamadı" });
+  if (wo.status !== "DEVAM_EDİYOR")
+    return res.status(400).json({ error: "Numune, ancak teklif onaylandıktan sonra gönderilebilir" });
+  wo.sample_sent = true;
+  wo.sample_sent_at = nowStrTR();
+  await store.upsertWorkOrder(wo);
+  broadcast({ type: "wo_updated", wo });
+  await addAudit(req.user.id, supplierName, "tedarikci", "Tedarikçi Numune Gönderdi", "wo", wo.id,
+    `${wo.mold_id} için numune gönderildi`);
+  res.json({ ok: true, wo });
+});
+
+app.post("/api/supplier/ariz/:id/complete", auth, supplierOnly, validate(supplierArizCompleteSchema), async (req, res) => {
+  const supplierName = await getSupplierName(req.user.id);
+  if (!supplierName) return res.status(403).json({ error: "Tedarikçi kimliği tanımlı değil — admin ile iletişime geçin" });
+  const wo = await store.getWorkOrderById(req.params.id);
+  if (!wo || wo.source !== "tedarikci_portali" || wo.supplier_name !== supplierName)
+    return res.status(404).json({ error: "İş emri bulunamadı" });
+  if (wo.status !== "DEVAM_EDİYOR")
+    return res.status(400).json({ error: "Bu iş tamamlanabilir durumda değil" });
+  if (!wo.sample_sent)
+    return res.status(400).json({ error: "Tamamlamadan önce numune gönderdiğinizi işaretlemelisiniz" });
+  const ts = nowStrTR();
+  // Genel kalite onayı ayarı kapalı olsa bile, tedarikçinin kendi yaptığı
+  // tadilat/onarım HER ZAMAN kalite onayına gider — bu, ayrı ve koşulsuz
+  // bir güven kontrolüdür (bkz. kullanıcı talebi).
+  wo.status = "KALITE_BEKLIYOR";
+  wo.closed_at = null;
+  wo.description = (wo.description || "") + (req.body.note ? ` | Tedarikçi notu: ${req.body.note}` : "");
+  await store.upsertWorkOrder(wo);
+  broadcast({ type: "wo_updated", wo });
+  await addAudit(req.user.id, supplierName, "tedarikci", "Tedarikçi Onarımı Tamamladı", "wo", wo.id,
+    `${wo.mold_id} için onarım tamamlandı, kalite onayı bekliyor`);
+  res.json({ ok: true, wo });
+});
+
+// ── Lider/admin: tedarikçi tekliflerini onayla/reddet ──
+app.post("/api/workorders/:id/teklif-approve", auth, async (req, res) => {
+  if (!["admin", "leader"].includes(req.user.role)) return res.status(403).json({ error: "Yetkisiz" });
+  const wo = await store.getWorkOrderById(req.params.id);
+  if (!wo || wo.status !== "TEKLIF_BEKLIYOR") return res.status(404).json({ error: "Onay bekleyen teklif bulunamadı" });
+  wo.status = "DEVAM_EDİYOR";
+  wo.started_at = nowStrTR();
+  await store.upsertWorkOrder(wo);
+  broadcast({ type: "wo_updated", wo });
+  await addAudit(req.user.id, req.user.name, req.user.role, "Tedarikçi Teklifi Onaylandı", "wo", wo.id,
+    `${wo.mold_id} için ${wo.supplier_name} teklifi onaylandı (₺${(wo.teklif_total || 0).toLocaleString("tr-TR")})`);
+  res.json({ ok: true, wo });
+});
+
+app.post("/api/workorders/:id/teklif-reject", auth, validate(teklifRejectSchema), async (req, res) => {
+  if (!["admin", "leader"].includes(req.user.role)) return res.status(403).json({ error: "Yetkisiz" });
+  const wo = await store.getWorkOrderById(req.params.id);
+  if (!wo || wo.status !== "TEKLIF_BEKLIYOR") return res.status(404).json({ error: "Onay bekleyen teklif bulunamadı" });
+  // Kalıp fiziksel olarak geri döndüğü kabul edilir — durum "Bakımda"ya alınır
+  // (Transfer'de kalmaz) ve iş, iç arıza havuzuna atanmamış olarak düşer.
+  wo.status = "BEKLEMEDE";
+  wo.assigned = null;
+  wo.description = (wo.description || "") + (req.body.reason ? ` | Teklif reddedildi: ${req.body.reason}` : " | Teklif reddedildi, kalıp iç bünyede onarılacak");
+  await store.upsertWorkOrder(wo);
+  broadcast({ type: "wo_updated", wo });
+  const molds = await store.getMolds();
+  const mold = molds.find(m => m.id === wo.mold_id);
+  if (mold) {
+    mold.status = "Bakımda";
+    await store.upsertMold(mold);
+    broadcast({ type: "molds_replaced", molds });
+  }
+  await addAudit(req.user.id, req.user.name, req.user.role, "Tedarikçi Teklifi Reddedildi", "wo", wo.id,
+    `${wo.mold_id} için ${wo.supplier_name} teklifi reddedildi, kalıp Bakımda'ya alındı, iç arıza havuzuna düştü`);
+  res.json({ ok: true, wo });
 });
 
 app.get("/api/system/info", auth, adminOnly, async (req, res) => {
